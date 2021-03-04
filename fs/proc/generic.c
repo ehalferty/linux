@@ -87,6 +87,7 @@ static struct proc_dir_entry *pde_subdir_find(struct proc_dir_entry *dir,
 	return NULL;
 }
 
+// Woah cool a red/black tree, love those things
 static bool pde_subdir_insert(struct proc_dir_entry *dir,
 			      struct proc_dir_entry *de)
 {
@@ -370,10 +371,12 @@ static const struct inode_operations proc_dir_inode_operations = {
 	.setattr	= proc_notify_change,
 };
 
+// Registers procs. Dir is either '/proc' or like 'sd' for '/proc/sd/...'
 /* returns the registered entry, or frees dp and returns NULL on failure */
 struct proc_dir_entry *proc_register(struct proc_dir_entry *dir,
 		struct proc_dir_entry *dp)
 {
+	//printk("|||||| proc_register dirname=%s dpname=%s\n", dir->name, dp->name);
 	if (proc_alloc_inum(&dp->low_ino))
 		goto out_free_entry;
 
@@ -396,6 +399,7 @@ out_free_entry:
 	return NULL;
 }
 
+// Called for each proc in /proc
 static struct proc_dir_entry *__proc_create(struct proc_dir_entry **parent,
 					  const char *name,
 					  umode_t mode,
@@ -404,6 +408,7 @@ static struct proc_dir_entry *__proc_create(struct proc_dir_entry **parent,
 	struct proc_dir_entry *ent = NULL;
 	const char *fn;
 	struct qstr qstr;
+	//printk("|||||| __proc_create %s\n", name);
 
 	if (xlate_proc_name(name, parent, &fn) != 0)
 		goto out;
@@ -546,6 +551,7 @@ struct proc_dir_entry *proc_create_reg(const char *name, umode_t mode,
 		struct proc_dir_entry **parent, void *data)
 {
 	struct proc_dir_entry *p;
+	printk("|||||| proc_create_reg %s\n", name);
 
 	if ((mode & S_IFMT) == 0)
 		mode |= S_IFREG;
@@ -652,6 +658,7 @@ struct proc_dir_entry *proc_create_single_data(const char *name, umode_t mode,
 		struct proc_dir_entry *parent,
 		int (*show)(struct seq_file *, void *), void *data)
 {
+	printk("|||||| proc_create_single_data %s", name);
 	struct proc_dir_entry *p;
 
 	p = proc_create_reg(name, mode, &parent, data);
