@@ -109,10 +109,12 @@ static inline void put_binfmt(struct linux_binfmt * fmt)
 	module_put(fmt->module);
 }
 
+// PHAZ - Change this to always return false. My fork of Linux won't have an execute bit.
 bool path_noexec(const struct path *path)
 {
-	return (path->mnt->mnt_flags & MNT_NOEXEC) ||
-	       (path->mnt->mnt_sb->s_iflags & SB_I_NOEXEC);
+	// return (path->mnt->mnt_flags & MNT_NOEXEC) ||
+	//        (path->mnt->mnt_sb->s_iflags & SB_I_NOEXEC);
+	return false;
 }
 
 #ifdef CONFIG_USELIB
@@ -892,13 +894,15 @@ EXPORT_SYMBOL(transfer_args_to_stack);
 
 #endif /* CONFIG_MMU */
 
+// PHAZ
 static struct file *do_open_execat(int fd, struct filename *name, int flags)
 {
 	struct file *file;
 	int err;
 	struct open_flags open_exec_flags = {
 		.open_flag = O_LARGEFILE | O_RDONLY | __FMODE_EXEC,
-		.acc_mode = MAY_EXEC,
+		//.acc_mode = MAY_EXEC,
+		.acc_mode = 0x0, // PHAZ - scratch
 		.intent = LOOKUP_OPEN,
 		.lookup_flags = LOOKUP_FOLLOW,
 	};
@@ -911,18 +915,21 @@ static struct file *do_open_execat(int fd, struct filename *name, int flags)
 		open_exec_flags.lookup_flags |= LOOKUP_EMPTY;
 
 	file = do_filp_open(fd, name, &open_exec_flags);
-	if (IS_ERR(file))
+	if (IS_ERR(file)) {
+		printk("|||||| do_filp_open in do_open_execat failed\n");
 		goto out;
+	}
 
 	/*
 	 * may_open() has already checked for this, so it should be
 	 * impossible to trip now. But we need to be extra cautious
 	 * and check again at the very end too.
 	 */
-	err = -EACCES;
-	if (WARN_ON_ONCE(!S_ISREG(file_inode(file)->i_mode) ||
-			 path_noexec(&file->f_path)))
-		goto exit;
+	// PHAZ - Commented this out. My fork of Linux won't have an execute bit.
+	// err = -EACCES;
+	// if (WARN_ON_ONCE(!S_ISREG(file_inode(file)->i_mode) ||
+	// 		 path_noexec(&file->f_path)))
+	// 	goto exit;
 
 	err = deny_write_access(file);
 	if (err)
