@@ -87,7 +87,9 @@ static struct proc_dir_entry *pde_subdir_find(struct proc_dir_entry *dir,
 	return NULL;
 }
 
+// PHAZ
 // Woah cool a red/black tree, love those things
+// TODO: Should see where the root of everything is actually stored...
 static bool pde_subdir_insert(struct proc_dir_entry *dir,
 			      struct proc_dir_entry *de)
 {
@@ -341,6 +343,7 @@ int proc_readdir(struct file *file, struct dir_context *ctx)
 	return proc_readdir_de(file, ctx, PDE(inode));
 }
 
+// PHAZ - Okay, proc_readdir/iterate_shared is how we enumerate /proc. Make that a function callable from userland?
 /*
  * These are the generic /proc directory operations. They
  * use the in-memory "struct proc_dir_entry" tree to parse
