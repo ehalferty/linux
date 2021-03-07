@@ -156,9 +156,9 @@ getname_flags(const char __user *filename, int flags, int *empty)
 		// See if it's "/proc", "/sys", or "/dev", if so it's in kernel memory and we need to use strncpy.
 		// TODO: Is this safe?
 		if (
-			(0 == strncmp(filename, "/proc", 6) && strnlen(filename, 6) == strlen("/proc")) ||
-			(0 == strncmp(filename, "/sys", 6) && strnlen(filename, 6) == strlen("/sys")) ||
-			(0 == strncmp(filename, "/dev", 6) && strnlen(filename, 6) == strlen("/dev"))
+			(0 == strncmp(filename, "/proc", 6) && strnlen(filename, 6) == strnlen("/proc", 6)) ||
+			(0 == strncmp(filename, "/sys", 6) && strnlen(filename, 6) == strnlen("/sys", 6)) ||
+			(0 == strncmp(filename, "/dev", 6) && strnlen(filename, 6) == strnlen("/dev", 6))
 		) {
 			strncpy(kname, filename, EMBEDDED_NAME_MAX);
 			len = strlen(kname);
