@@ -379,7 +379,6 @@ static const struct inode_operations proc_dir_inode_operations = {
 struct proc_dir_entry *proc_register(struct proc_dir_entry *dir,
 		struct proc_dir_entry *dp)
 {
-	//printk("|||||| proc_register dirname=%s dpname=%s\n", dir->name, dp->name);
 	if (proc_alloc_inum(&dp->low_ino))
 		goto out_free_entry;
 
@@ -411,7 +410,6 @@ static struct proc_dir_entry *__proc_create(struct proc_dir_entry **parent,
 	struct proc_dir_entry *ent = NULL;
 	const char *fn;
 	struct qstr qstr;
-	//printk("|||||| __proc_create %s\n", name);
 
 	if (xlate_proc_name(name, parent, &fn) != 0)
 		goto out;
@@ -554,7 +552,6 @@ struct proc_dir_entry *proc_create_reg(const char *name, umode_t mode,
 		struct proc_dir_entry **parent, void *data)
 {
 	struct proc_dir_entry *p;
-	printk("|||||| proc_create_reg %s\n", name);
 
 	if ((mode & S_IFMT) == 0)
 		mode |= S_IFREG;
@@ -661,7 +658,6 @@ struct proc_dir_entry *proc_create_single_data(const char *name, umode_t mode,
 		struct proc_dir_entry *parent,
 		int (*show)(struct seq_file *, void *), void *data)
 {
-	printk("|||||| proc_create_single_data %s", name);
 	struct proc_dir_entry *p;
 
 	p = proc_create_reg(name, mode, &parent, data);

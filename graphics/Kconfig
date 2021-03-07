@@ -5,7 +5,6 @@
 
 config GRAPHICS
 tristate "graphics"
-depends on x86
-default y if x86
+default y
 help
   Desktop graphics

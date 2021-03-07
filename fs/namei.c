@@ -2488,9 +2488,9 @@ int filename_lookup(int dfd, struct filename *name, unsigned flags,
 			    flags & LOOKUP_MOUNTPOINT ? AUDIT_INODE_NOEVAL : 0);
 	restore_nameidata();
 	putname(name);
-	if (retval != 0) {
-		printk("ERR in filename_lookup\n");
-	}
+	// if (retval != 0) {
+	// 	printk("ERR in filename_lookup\n");
+	// }
 	return retval;
 }
 

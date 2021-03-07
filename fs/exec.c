@@ -916,7 +916,6 @@ static struct file *do_open_execat(int fd, struct filename *name, int flags)
 
 	file = do_filp_open(fd, name, &open_exec_flags);
 	if (IS_ERR(file)) {
-		printk("|||||| do_filp_open in do_open_execat failed\n");
 		goto out;
 	}
 
