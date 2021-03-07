@@ -3130,6 +3130,7 @@ static void *copy_mount_options(const void __user * data)
 
 	if (left == PAGE_SIZE) {
 		kfree(copy);
+		printk("EFAULT 1\n");
 		return ERR_PTR(-EFAULT);
 	}
 
@@ -3241,10 +3242,15 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 	int ret;
 
 	ret = user_path_at(AT_FDCWD, dir_name, LOOKUP_FOLLOW, &path);
-	if (ret)
+	if (ret) {
+		printk("ERR in user_path_at dir_name=%s\n", dir_name);
 		return ret;
+	}
 	ret = path_mount(dev_name, &path, type_page, flags, data_page);
 	path_put(&path);
+	if (ret) {
+		printk("ERR in path_mount\n");
+	}
 	return ret;
 }
 
@@ -3428,6 +3434,7 @@ struct dentry *mount_subtree(struct vfsmount *m, const char *name)
 }
 EXPORT_SYMBOL(mount_subtree);
 
+// phaz 3
 SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 		char __user *, type, unsigned long, flags, void __user *, data)
 {
@@ -3451,8 +3458,11 @@ SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 	ret = PTR_ERR(options);
 	if (IS_ERR(options))
 		goto out_data;
+	
+	printk("REACHED do_mount(\"%s\", \"%s\", \"%s\", %ld, %ld)\n", kernel_dev, dir_name, kernel_type, flags, (unsigned long)options);
 
-	ret = do_mount(kernel_dev, dir_name, kernel_type, flags, options);
+	// ret = do_mount(kernel_dev, dir_name, kernel_type, flags, options);
+	ret = do_mount(kernel_dev, dir_name, kernel_type, flags, NULL);
 
 	kfree(options);
 out_data:

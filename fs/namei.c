@@ -132,12 +132,16 @@ getname_flags(const char __user *filename, int flags, int *empty)
 	int len;
 
 	result = audit_reusename(filename);
-	if (result)
+	if (result) {
+		printk("result from audit_reusename\n");
 		return result;
+	}
 
 	result = __getname();
-	if (unlikely(!result))
+	if (unlikely(!result)) {
+		printk("no result from __getname\n");
 		return ERR_PTR(-ENOMEM);
+	}
 
 	/*
 	 * First, try to embed the struct filename inside the names_cache
@@ -146,10 +150,24 @@ getname_flags(const char __user *filename, int flags, int *empty)
 	kname = (char *)result->iname;
 	result->name = kname;
 
+// phaz6
 	len = strncpy_from_user(kname, filename, EMBEDDED_NAME_MAX);
 	if (unlikely(len < 0)) {
-		__putname(result);
-		return ERR_PTR(len);
+		// See if it's "/proc", "/sys", or "/dev", if so it's in kernel memory and we need to use strncpy.
+		// TODO: Is this safe?
+		if (
+			(0 == strncmp(filename, "/proc", 6) && strnlen(filename, 6) == strlen("/proc")) ||
+			(0 == strncmp(filename, "/sys", 6) && strnlen(filename, 6) == strlen("/sys")) ||
+			(0 == strncmp(filename, "/dev", 6) && strnlen(filename, 6) == strlen("/dev"))
+		) {
+			strncpy(kname, filename, EMBEDDED_NAME_MAX);
+			len = strlen(kname);
+			if (len < 0) {
+				printk("strncpy_from_user < 0\n");
+				__putname(result);
+				return ERR_PTR(len);
+			}
+		}
 	}
 
 	/*
@@ -169,17 +187,20 @@ getname_flags(const char __user *filename, int flags, int *empty)
 		 */
 		result = kzalloc(size, GFP_KERNEL);
 		if (unlikely(!result)) {
+			printk("no result from kzalloc\n");
 			__putname(kname);
 			return ERR_PTR(-ENOMEM);
 		}
 		result->name = kname;
 		len = strncpy_from_user(kname, filename, PATH_MAX);
 		if (unlikely(len < 0)) {
+			printk("strncpy_from_user len < 0 (2)\n");
 			__putname(kname);
 			kfree(result);
 			return ERR_PTR(len);
 		}
 		if (unlikely(len == PATH_MAX)) {
+			printk("len == PATH_MAX\n");
 			__putname(kname);
 			kfree(result);
 			return ERR_PTR(-ENAMETOOLONG);
@@ -192,6 +213,7 @@ getname_flags(const char __user *filename, int flags, int *empty)
 		if (empty)
 			*empty = 1;
 		if (!(flags & LOOKUP_EMPTY)) {
+			printk("LOOKUP_EMPTY\n");
 			putname(result);
 			return ERR_PTR(-ENOENT);
 		}
@@ -200,6 +222,9 @@ getname_flags(const char __user *filename, int flags, int *empty)
 	result->uptr = filename;
 	result->aname = NULL;
 	audit_getname(result);
+	// if (result != 0) {
+	// 	printk("audit_getname(result) set result\n");
+	// }
 	return result;
 }
 
@@ -2443,8 +2468,10 @@ int filename_lookup(int dfd, struct filename *name, unsigned flags,
 {
 	int retval;
 	struct nameidata nd;
-	if (IS_ERR(name))
+	if (IS_ERR(name)) {
+		printk("IS_ERR(name)");
 		return PTR_ERR(name);
+	}
 	if (unlikely(root)) {
 		nd.root = *root;
 		flags |= LOOKUP_ROOT;
@@ -2461,6 +2488,9 @@ int filename_lookup(int dfd, struct filename *name, unsigned flags,
 			    flags & LOOKUP_MOUNTPOINT ? AUDIT_INODE_NOEVAL : 0);
 	restore_nameidata();
 	putname(name);
+	if (retval != 0) {
+		printk("ERR in filename_lookup\n");
+	}
 	return retval;
 }
 

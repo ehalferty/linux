@@ -176,6 +176,7 @@ void *memdup_user(const void __user *src, size_t len)
 
 	if (copy_from_user(p, src, len)) {
 		kfree(p);
+		printk("EFAULT 2\n");
 		return ERR_PTR(-EFAULT);
 	}
 
@@ -202,6 +203,7 @@ void *vmemdup_user(const void __user *src, size_t len)
 
 	if (copy_from_user(p, src, len)) {
 		kvfree(p);
+		printk("EFAULT 3\n");
 		return ERR_PTR(-EFAULT);
 	}
 
@@ -223,8 +225,10 @@ char *strndup_user(const char __user *s, long n)
 
 	length = strnlen_user(s, n);
 
-	if (!length)
+	if (!length) {
+		printk("EFAULT 4\n");
 		return ERR_PTR(-EFAULT);
+	}
 
 	if (length > n)
 		return ERR_PTR(-EINVAL);
@@ -263,6 +267,7 @@ void *memdup_user_nul(const void __user *src, size_t len)
 
 	if (copy_from_user(p, src, len)) {
 		kfree(p);
+		printk("EFAULT 5\n");
 		return ERR_PTR(-EFAULT);
 	}
 	p[len] = '\0';
