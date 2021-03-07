@@ -1619,6 +1619,7 @@ static __attribute__((unused))
 int sys_mount(const char *src, const char *tgt, const char *fst,
 	      unsigned long flags, const void *data)
 {
+	printk("HIT  MOUNT 1\n");
 	return my_syscall5(__NR_mount, src, tgt, fst, flags, data);
 }
 
@@ -2102,6 +2103,7 @@ int mount(const char *src, const char *tgt,
 	  const char *fst, unsigned long flags,
 	  const void *data)
 {
+	printk("HIT  MOUNT 2\n");
 	int ret = sys_mount(src, tgt, fst, flags, data);
 
 	if (ret < 0) {

@@ -3435,6 +3435,7 @@ SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 	char *kernel_type;
 	char *kernel_dev;
 	void *options;
+	printk("REACHED MOUNT 3\n");
 
 	kernel_type = copy_mount_string(type);
 	ret = PTR_ERR(kernel_type);

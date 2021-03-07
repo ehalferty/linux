@@ -853,6 +853,7 @@ SYSCALL_DEFINE2(lremovexattr, const char __user *, pathname,
 	return path_removexattr(pathname, name, 0);
 }
 
+// phaz2
 SYSCALL_DEFINE2(fremovexattr, int, fd, const char __user *, name)
 {
 	struct fd f = fdget(fd);
