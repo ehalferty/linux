@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# graphics for desktop
+#
+
+config GRAPHICS
+tristate "graphics"
+depends on x86
+default y if x86
+help
+  Desktop graphics
