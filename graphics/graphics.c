@@ -10,6 +10,24 @@
 #include "../include/linux/syscalls.h"
 #include "../include/linux/fb.h"
 
+#define INITIAL_WINDOW_ARRAY_SIZE 128
+#define BACKGROUND_GRID_SIZE 32
+
+struct WindowClass {
+        // Um what goes here? This is kind of archaic... lol
+};
+
+struct Window {
+        struct WindowClass *windowClass;
+        int x;
+        int y;
+        int width;
+        int height;
+};
+
+static struct Window **windows;
+static int numWindows; // (Size of above array, not the number of actual windows in existence).
+
 extern int num_registered_fb;
 extern struct fb_info *registered_fb[FB_MAX] __read_mostly;
 
@@ -17,60 +35,106 @@ struct kobject * graphics_kobject;
 static int call;
 static struct kobj_attribute call_attribute;
 
+static struct fb_info *fb;
+static long screensize;
+static struct fb_fix_screeninfo *finfo;
+static struct fb_var_screeninfo *vinfo;
+
 static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 static int __init graphics_init(void);
+static void drawNewWindow(struct Window * window);
 static void __exit graphics_exit(void);
-uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo);
-
+static uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo);
 
 static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
         return sprintf(buf, "%d\n", call);
 }
 
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+        int i = 0;
+        int found = 0;
+
+        printk("call_store\n");
+
+        while (i < numWindows) {
+                if (windows[i] == NULL) {
+                        found = 1;
+                        break;
+                }
+                i++;
+        }
+        if (!found) {
+                printk("ERROR!! Need to krealloc windows.\n");
+        } else {
+                windows[i] = kmalloc(sizeof(struct Window), GFP_KERNEL);
+                windows[i]->x = buf[0];
+                windows[i]->y = buf[1];
+                windows[i]->width = buf[2];
+                windows[i]->height = buf[3];
+                drawNewWindow(windows[i]);
+        }
         sscanf(buf, "%du", &call);
         return count;
 }
 
-uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo) {
+static void drawNewWindow(struct Window * window) {
+        long location;
+        int x = window->x, y = window->y;
+        while (y < window->y + window->height) {
+                x = window->x;
+                while (x < window->x + window->width - 1) {
+                        location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
+                        *((uint32_t*)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
+                        x++;
+                }
+                y++;
+        }
+
+        // int i = 0;
+        // while (i < screensize) {
+        //         *((uint32_t*)(fb->screen_base + i)) = 0x80;
+        //         i++;
+        // }
+}
+
+static uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo) {
 	return (r<<vinfo->red.offset) | (g<<vinfo->green.offset) | (b<<vinfo->blue.offset);
 }
 
+// xres=1280 yres=1024 xoffset=0 yoffset=0 bits_per_pixel=24 line_length=3840 yres_virtual=1024 line_length=3840 screensize=3932160
+
 // Called as one of the last thing the kernel does before passing control to init process(es)
 // Sets up the double-buffered framebuffer, renders a grey background, marks the screen as clean.
-void graphics_setup(void) {
-        struct fb_info *fb = registered_fb[0];
-        long screensize, location;
-        int x = 0, y = 0, val = 0;
-	struct fb_fix_screeninfo *finfo = &(fb->fix);
-	struct fb_var_screeninfo *vinfo = &(fb->var);
+void graphics_setup() {
+        long location;
+        int x = 0, y = 0;
         ssize_t res;
+
+        fb = registered_fb[0];
+	finfo = &(fb->fix);
+	vinfo = &(fb->var);
+        screensize = vinfo->yres_virtual * finfo->line_length;
 
         printk("SETTING UP GRAPHICS\n");
         
         // TODO: Should check if num_registered_fb > 1 and decide which to show??!
         printk("num_registered_fb=%d\n", num_registered_fb);
-        printk("xres=%d yres=%d xoffset=%d yoffset=%d bits_per_pixel=%d line_length=%d\n", vinfo->xres, vinfo->yres, vinfo->xoffset, vinfo->yoffset, vinfo->bits_per_pixel, finfo->line_length);
-        screensize = vinfo->yres_virtual * finfo->line_length;
-        while (x < screensize) {
-                *((uint32_t*)(fb->screen_base + x)) = 0x80;
-                x++;
+        printk("xres=%d yres=%d xoffset=%d yoffset=%d bits_per_pixel=%d line_length=%d yres_virtual=%d line_length=%d screensize=%d\n",
+                vinfo->xres, vinfo->yres, vinfo->xoffset, vinfo->yoffset, vinfo->bits_per_pixel,
+                finfo->line_length, vinfo->yres_virtual, finfo->line_length, screensize);
+        while (y < vinfo->yres) {
+                x = 0;
+                while (x < vinfo->xres - 1) {
+                        location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
+                        *((uint32_t*)(fb->screen_base + location)) = pixel_color(0x80, 0x80, 0x80, vinfo);
+                        x++;
+                }
+                y++;
         }
-
-        // while (y < vinfo->yres) {
-        //         while (x < vinfo->xres - 1) {
-        //                 location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel / 8) + (y + vinfo->yoffset) * finfo->line_length;
-        //                 *((uint32_t*)(fb->screen_base + location)) = pixel_color(
-        //                         (x > y) ? val : 0xFF - val,
-        //                         (y > x) ? val : 0xFF - val,
-        //                         (x == y) ? val : 0xFF - val,
-        //                         vinfo);
-        //                 x++;
-        //                 val++;
-        //         }
-        //         y++;
-        // }
+        // Init windows with a few empty pointers
+        windows = kmalloc(INITIAL_WINDOW_ARRAY_SIZE * sizeof(struct Window *), GFP_KERNEL);
+        numWindows = INITIAL_WINDOW_ARRAY_SIZE;
 }
 
 static int __init graphics_init(void) {
@@ -97,7 +161,7 @@ static int __init graphics_init(void) {
 
 static void __exit graphics_exit(void) {
         kobject_put(graphics_kobject);
-        printk("Graphics module uninitialized successfully \n");
+        printk("Graphics module uninitialized successfully\n");
 }
 
 module_init(graphics_init);
