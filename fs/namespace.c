@@ -3434,7 +3434,6 @@ struct dentry *mount_subtree(struct vfsmount *m, const char *name)
 }
 EXPORT_SYMBOL(mount_subtree);
 
-// phaz 3
 SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 		char __user *, type, unsigned long, flags, void __user *, data)
 {
@@ -3442,7 +3441,6 @@ SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 	char *kernel_type;
 	char *kernel_dev;
 	void *options;
-	printk("REACHED MOUNT 3\n");
 
 	kernel_type = copy_mount_string(type);
 	ret = PTR_ERR(kernel_type);
@@ -3461,8 +3459,7 @@ SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 	
 	printk("REACHED do_mount(\"%s\", \"%s\", \"%s\", %ld, %ld)\n", kernel_dev, dir_name, kernel_type, flags, (unsigned long)options);
 
-	// ret = do_mount(kernel_dev, dir_name, kernel_type, flags, options);
-	ret = do_mount(kernel_dev, dir_name, kernel_type, flags, NULL);
+	ret = do_mount(kernel_dev, dir_name, kernel_type, flags, options);
 
 	kfree(options);
 out_data:

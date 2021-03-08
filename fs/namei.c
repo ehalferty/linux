@@ -124,8 +124,7 @@
 
 #define EMBEDDED_NAME_MAX	(PATH_MAX - offsetof(struct filename, iname))
 
-struct filename *
-getname_flags(const char __user *filename, int flags, int *empty)
+struct filename * getname_flags(const char __user *filename, int flags, int *empty)
 {
 	struct filename *result;
 	char *kname;
@@ -150,10 +149,13 @@ getname_flags(const char __user *filename, int flags, int *empty)
 	kname = (char *)result->iname;
 	result->name = kname;
 
-// phaz6
 	len = strncpy_from_user(kname, filename, EMBEDDED_NAME_MAX);
+	// if (unlikely(len < 0)) {
+	// 	__putname(result);
+	// 	return ERR_PTR(len);
+	// }
 	if (unlikely(len < 0)) {
-		// See if it's "/proc", "/sys", or "/dev", if so it's in kernel memory and we need to use strncpy.
+		// PHAZ - See if it's "/proc", "/sys", or "/dev", if so it's in kernel memory and we need to use strncpy.
 		// TODO: Is this safe?
 		if (
 			(0 == strncmp(filename, "/proc", 6) && strnlen(filename, 6) == strnlen("/proc", 6)) ||
@@ -162,11 +164,12 @@ getname_flags(const char __user *filename, int flags, int *empty)
 		) {
 			strncpy(kname, filename, EMBEDDED_NAME_MAX);
 			len = strlen(kname);
-			if (len < 0) {
-				printk("strncpy_from_user < 0\n");
-				__putname(result);
-				return ERR_PTR(len);
-			}
+		}
+
+		if (len < 0) {
+			printk("strncpy_from_user < 0\n");
+			__putname(result);
+			return ERR_PTR(len);
 		}
 	}
 

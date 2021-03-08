@@ -1203,7 +1203,6 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 	return do_sys_openat2(dfd, filename, &how);
 }
 
-
 SYSCALL_DEFINE3(open, const char __user *, filename, int, flags, umode_t, mode)
 {
 	if (force_o_largefile())

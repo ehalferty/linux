@@ -89,6 +89,7 @@ byte_at_a_time:
 	 * characters the caller would have wanted. That's an EFAULT.
 	 */
 efault:
+	printk("------ 002\n");
 	return -EFAULT;
 }
 
@@ -115,8 +116,10 @@ long strncpy_from_user(char *dst, const char __user *src, long count)
 	unsigned long max_addr, src_addr;
 
 	might_fault();
-	if (should_fail_usercopy())
+	if (should_fail_usercopy()) {
+		printk("------ 003\n");
 		return -EFAULT;
+	}
 	if (unlikely(count <= 0))
 		return 0;
 
@@ -141,6 +144,7 @@ long strncpy_from_user(char *dst, const char __user *src, long count)
 			return retval;
 		}
 	}
+	printk("------ 001\n");
 	return -EFAULT;
 }
 EXPORT_SYMBOL(strncpy_from_user);
