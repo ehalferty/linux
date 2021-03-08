@@ -419,13 +419,13 @@ static ssize_t new_sync_read(struct file *filp, char __user *buf, size_t len, lo
 	return ret;
 }
 
-// static int warn_unsupported(struct file *file, const char *op)
-// {
-// 	pr_warn_ratelimited(
-// 		"kernel %s not supported for file %pD4 (pid: %d comm: %.20s)\n",
-// 		op, file, current->pid, current->comm);
-// 	return -EINVAL;
-// }
+static int warn_unsupported(struct file *file, const char *op)
+{
+	pr_warn_ratelimited(
+		"kernel %s not supported for file %pD4 (pid: %d comm: %.20s)\n",
+		op, file, current->pid, current->comm);
+	return -EINVAL;
+}
 
 ssize_t __kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 {
@@ -445,9 +445,8 @@ ssize_t __kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 	 * Also fail if ->read_iter and ->read are both wired up as that
 	 * implies very convoluted semantics.
 	 */
-	// PHAZ - see wrote
-	// if (unlikely(!file->f_op->read_iter || file->f_op->read))
-	// 	return warn_unsupported(file, "read");
+	if (unlikely(!file->f_op->read_iter || file->f_op->read))
+		return warn_unsupported(file, "read");
 
 	init_sync_kiocb(&kiocb, file);
 	kiocb.ki_pos = pos ? *pos : 0;
@@ -542,11 +541,10 @@ ssize_t __kernel_write(struct file *file, const void *buf, size_t count, loff_t 
 	 * Also fail if ->write_iter and ->write are both wired up as that
 	 * implies very convoluted semantics.
 	 */
-	// PHAZ - Maybe I can just comment this out and cross my fingers??!!
-	// if (unlikely(!file->f_op->write_iter || file->f_op->write)) {
-	// 	printk("++++++ write and write_iter wired\n");
-	// 	return warn_unsupported(file, "write");
-	// }
+	if (unlikely(!file->f_op->write_iter || file->f_op->write)) {
+		printk("++++++ write and write_iter wired\n");
+		return warn_unsupported(file, "write");
+	}
 
 	init_sync_kiocb(&kiocb, file);
 	kiocb.ki_pos = pos ? *pos : 0;
@@ -554,8 +552,6 @@ ssize_t __kernel_write(struct file *file, const void *buf, size_t count, loff_t 
 	iov_iter_kvec(&iter, WRITE, &iov, 1, iov.iov_len);
 	printk("file=%08x kiocb=%08x iter=%08x\n", file, kiocb, iter);
 	ret = file->f_op->write_iter(&kiocb, &iter);
-	// PHAZ
-	printk("==================================================\n");
 	if (ret > 0) {
 		if (pos)
 			*pos = kiocb.ki_pos;
@@ -584,7 +580,6 @@ ssize_t kernel_write(struct file *file, const void *buf, size_t count,
 		return ret;
 
 	file_start_write(file);
-	// PHAZ
 	ret =  __kernel_write(file, buf, count, pos);
 	file_end_write(file);
 	return ret;

@@ -824,9 +824,7 @@ fb_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	return (err) ? err : cnt;
 }
 
-static ssize_t
-fb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
+ssize_t fb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos) {
 	unsigned long p = *ppos;
 	struct fb_info *info = file_fb_info(file);
 	u8 *buffer, *src;
@@ -895,6 +893,7 @@ fb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 
 	return (cnt) ? cnt : err;
 }
+EXPORT_SYMBOL(fb_write);
 
 int
 fb_pan_display(struct fb_info *info, struct fb_var_screeninfo *var)
