@@ -10,29 +10,39 @@
 #include "../include/linux/syscalls.h"
 #include "../include/linux/fb.h"
 
+
+struct ReturnValue {
+        struct ReturnValue *next;
+        char *data;
+        int size;
+        int pid;
+};
+
+struct ReturnValue *returnValues = 0;
+
 #define INITIAL_WINDOW_ARRAY_SIZE 128
 #define BACKGROUND_GRID_SIZE 32
 
-struct WindowClass {
-        // Um what goes here? This is kind of archaic... lol
-};
-
+// Note: Any changes here should be mirrored in a header file
 struct Window {
-        struct WindowClass *windowClass;
-        int x;
-        int y;
-        int width;
-        int height;
+    int x;
+    int y;
+    int width;
+    int height;
 };
 
-static struct Window **windows;
+struct WindowRef {
+        int pid;
+        struct Window *window; // Pointer to userspace
+};
+
+static struct WindowRef **windows = 0;
 static int numWindows; // (Size of above array, not the number of actual windows in existence).
 
 extern int num_registered_fb;
 extern struct fb_info *registered_fb[FB_MAX] __read_mostly;
 
 struct kobject * graphics_kobject;
-static int call;
 static struct kobj_attribute call_attribute;
 
 static struct fb_info *fb;
@@ -43,66 +53,101 @@ static struct fb_var_screeninfo *vinfo;
 static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 static int __init graphics_init(void);
-static void drawNewWindow(struct Window * window);
+static void drawNewWindow(struct WindowRef * window);
 static void __exit graphics_exit(void);
 static uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo);
 
 static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-        return sprintf(buf, "%d\n", call);
+        int pid =  task_pid_nr(current);
+        struct ReturnValue *prev = 0;
+        // Go through return values to see if there is one for that pid.
+        struct ReturnValue *returnValue = returnValues;
+        while (returnValue != NULL) {
+                if (returnValue->pid == pid) {
+                        break;
+                }
+                prev = returnValue;
+                returnValue = returnValue->next;
+        }
+        if (returnValue != NULL) {
+                if (prev == NULL) {
+                        returnValues = returnValue->next;
+                } else if (returnValue->next != NULL) {
+                        prev->next = returnValue->next;
+                }
+                memcpy(buf, returnValue->data, returnValue->size);
+                int size = returnValue->size;
+                kfree(returnValue);
+                return size;
+        }
+        return 0;
 }
 
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
         int i = 0;
         int found = 0;
+        int pid =  task_pid_nr(current);
 
-        printk("call_store\n");
+        if (buf[0] == 0x01) {
 
-        while (i < numWindows) {
-                if (windows[i] == NULL) {
-                        found = 1;
-                        break;
+                printk("call_store PID=%d\n", pid);
+
+                while (i < numWindows) {
+                        if (windows[i] == NULL) {
+                                found = 1;
+                                break;
+                        }
+                        i++;
                 }
-                i++;
+                if (!found) {
+                        printk("ERROR!! Need to krealloc windows.\n");
+                } else {
+                        windows[i] = kmalloc(sizeof(struct WindowRef), GFP_KERNEL);
+                        windows[i]->pid = pid;
+                        windows[i]->window = ((buf[4]) | (buf[5] << 8) | (buf[6] << 16) | (buf[7] << 24));
+                        drawNewWindow(windows[i]);
+                }
+                struct ReturnValue *newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
+                newReturnValue->pid = pid;
+                newReturnValue->next = NULL;
+                newReturnValue->size = 16;
+                newReturnValue->data = (char *)kmalloc(16, GFP_KERNEL);
+                sprintf(newReturnValue->data, "Hello, world!");
+
+                struct ReturnValue *returnValue = returnValues;
+                if (returnValue == NULL) {
+                        returnValues = newReturnValue;
+                } else {
+                        while (returnValue->next != NULL) {
+                                if (returnValue->pid == pid) {
+                                        printk("Ruh-roh, already a return value for that PID. This is a big problem... pid=%d\n", pid);
+                                        break;
+                                }
+                                returnValue = returnValue->next;
+                        }
+                        returnValue->next = newReturnValue;
+                }
         }
-        if (!found) {
-                printk("ERROR!! Need to krealloc windows.\n");
-        } else {
-                windows[i] = kmalloc(sizeof(struct Window), GFP_KERNEL);
-                windows[i]->x = buf[0];
-                windows[i]->y = buf[1];
-                windows[i]->width = buf[2];
-                windows[i]->height = buf[3];
-                drawNewWindow(windows[i]);
-        }
-        sscanf(buf, "%du", &call);
         return count;
 }
 
-static void drawNewWindow(struct Window * window) {
-        long location;
-        int x = window->x, y = window->y;
-        while (y < window->y + window->height) {
-                x = window->x;
-                while (x < window->x + window->width - 1) {
-                        location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
-                        *((uint32_t*)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
-                        x++;
-                }
-                y++;
-        }
-
-        // int i = 0;
-        // while (i < screensize) {
-        //         *((uint32_t*)(fb->screen_base + i)) = 0x80;
-        //         i++;
+static void drawNewWindow(struct WindowRef * window) {
+        // long location;
+        // int x = window->x, y = window->y;
+        // while (y < window->y + window->height) {
+        //         x = window->x;
+        //         while (x < window->x + window->width - 1) {
+        //                 location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
+        //                 *((uint32_t*)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
+        //                 x++;
+        //         }
+        //         y++;
         // }
 }
 
 static uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo) {
 	return (r<<vinfo->red.offset) | (g<<vinfo->green.offset) | (b<<vinfo->blue.offset);
 }
-
-// xres=1280 yres=1024 xoffset=0 yoffset=0 bits_per_pixel=24 line_length=3840 yres_virtual=1024 line_length=3840 screensize=3932160
 
 // Called as one of the last thing the kernel does before passing control to init process(es)
 // Sets up the double-buffered framebuffer, renders a grey background, marks the screen as clean.
@@ -120,7 +165,7 @@ void graphics_setup() {
         
         // TODO: Should check if num_registered_fb > 1 and decide which to show??!
         printk("num_registered_fb=%d\n", num_registered_fb);
-        printk("xres=%d yres=%d xoffset=%d yoffset=%d bits_per_pixel=%d line_length=%d yres_virtual=%d line_length=%d screensize=%d\n",
+        printk("xres=%d yres=%d xoffset=%d yoffset=%d bits_per_pixel=%d line_length=%d yres_virtual=%d line_length=%d screensize=%ld\n",
                 vinfo->xres, vinfo->yres, vinfo->xoffset, vinfo->yoffset, vinfo->bits_per_pixel,
                 finfo->line_length, vinfo->yres_virtual, finfo->line_length, screensize);
         while (y < vinfo->yres) {
@@ -180,6 +225,14 @@ MODULE_AUTHOR("edwardhalferty");
 
 
 
+
+// xres=1280 yres=1024 xoffset=0 yoffset=0 bits_per_pixel=24 line_length=3840 yres_virtual=1024 line_length=3840 screensize=3932160
+
+        // int i = 0;
+        // while (i < screensize) {
+        //         *((uint32_t*)(fb->screen_base + i)) = 0x80;
+        //         i++;
+        // }
 
                         // res = fb_write()
                         // static ssize_t fb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
