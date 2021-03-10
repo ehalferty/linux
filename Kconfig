@@ -31,4 +31,4 @@ source "lib/Kconfig.debug"
 
 source "Documentation/Kconfig"
 
-source "graphics/Kconfig"
+source "multimedia/Kconfig"

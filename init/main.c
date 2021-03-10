@@ -110,7 +110,7 @@
 
 #include <kunit/test.h>
 
-#include <../graphics/graphics.h>
+#include <../multimedia/kernelmultimedia_main.h>
 
 static int kernel_init(void *);
 
@@ -1731,8 +1731,8 @@ static int __ref kernel_init(void *unused)
 		}
 	}
 
-	// Initialize graphics
-	graphics_setup();
+	// Initialize graphics/sound/input
+	kernelmultimedia_setup();
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);

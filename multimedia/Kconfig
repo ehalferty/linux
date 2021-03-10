@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Graphics/sound/input for desktop
+#
+
+config MULTIMEDIA
+tristate "multimedia"
+default y
+help
+  Graphics/sound/input for desktop
