@@ -106,6 +106,7 @@ static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char
                 kfree(returnValue);
                 return size;
         }
+        printk("============================================== 3\n");
         return 0;
 }
 
@@ -173,7 +174,6 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         }
                         returnValue->next = newReturnValue;
                 }
-                // }
         }
         return count;
 }
