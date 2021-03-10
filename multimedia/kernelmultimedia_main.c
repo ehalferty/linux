@@ -119,13 +119,13 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
         uint32_t code = 0, miscDataLength = 0;
         uint64_t argA = 0, argB = 0;
         char * miscData = NULL;
-        while (i < 4) { code |= buf[i] << (i * 8); i++; }
+        while (i < 4) { code |= (buf[i] << (i * 8)); i++; }
         i = 0;
-        while (i < 8) { argA |= buf[i + 4] << (i * 8); i++; }
+        while (i < 8) { argA |= (buf[i + 4] << (i * 8)); i++; }
         i = 0;
-        while (i < 8) { argB |= buf[i + 12] << (i * 8); i++; }
+        while (i < 8) { argB |= (buf[i + 12] << (i * 8)); i++; }
         i = 0;
-        while (i < 4) { miscDataLength |= buf[i + 20] << (i * 8); i++; }
+        while (i < 4) { miscDataLength |= (buf[i + 20] << (i * 8)); i++; }
 
         printk("RECEIVED KERNELMULTIMEDIA API CALL: code=%lu argA=%08x argB=%08x miscDatLen=%lu\n", code, argA, argB, miscDataLength);
 
@@ -175,7 +175,44 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         returnValue->next = newReturnValue;
                 }
         } else if (code == KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE) {
+                printk("WHAT THE HELL %llu\n", argA);
+                printk("WHAT THE HELL %llu\n", argB);
                 // TODO
+                uint8_t *buf3 = kmalloc(1024, GFP_KERNEL);
+                i = 0;
+                while (i < 1024) {
+                        buf3[i] = 0xFF;
+                        i++;
+                }
+                // uint64_t asdf = 0xFFFFFFFFFFFFFFFF;
+                printk("22222222 messageQueue=%llu\n", argA);
+                printk("22222222 argB=%llu\n", argB);
+                copy_to_user(argA, 123, 1);
+                copy_to_user(argA + 1, 123, 1);
+                copy_to_user(argA + 2, 123, 1);
+                copy_to_user(argA + 3, 123, 1);
+                struct ReturnValue *newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
+                newReturnValue->pid = pid;
+                newReturnValue->next = NULL;
+                newReturnValue->size = 16;
+                newReturnValue->data = (char *)kmalloc(16, GFP_KERNEL);
+                sprintf(newReturnValue->data, "Hello, world 2!");
+
+                struct ReturnValue *returnValue = returnValues;
+                if (returnValue == NULL) {
+                        returnValues = newReturnValue;
+                } else {
+                        while (returnValue->next != NULL) {
+                                if (returnValue->pid == pid) {
+                                        // This will probably happen if someone has more than one thread calling this API.
+                                        // Probably best to discourage that, or use thread IDs somehow to keep track of return values.
+                                        printk("Ruh-roh, already a return value for that PID. This is a big problem... pid=%d\n", pid);
+                                        break;
+                                }
+                                returnValue = returnValue->next;
+                        }
+                        returnValue->next = newReturnValue;
+                }
         }
         return count;
 }
