@@ -104,7 +104,27 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 } else {
                         windows[i] = kmalloc(sizeof(struct WindowRef), GFP_KERNEL);
                         windows[i]->pid = pid;
-                        windows[i]->window = ((buf[4]) | (buf[5] << 8) | (buf[6] << 16) | (buf[7] << 24));
+                        printk("RECEIVING WINDOW %02x %02x\n", buf[4], buf[5]);
+                        printk("RECEIVING WINDOW %02x %02x\n", buf[6], buf[7]);
+                        printk("RECEIVING WINDOW %02x %02x\n", buf[8], buf[9]);
+                        printk("RECEIVING WINDOW %02x %02x\n", buf[10], buf[11]);
+                        windows[i]->window = 0;
+                        windows[i]->window = ((unsigned long long)windows[i]->window) | ((buf[4] << 0) & 0xFF);
+                        windows[i]->window = ((unsigned long long)windows[i]->window) | ((buf[5] << 8) & 0xFF00);
+                        windows[i]->window = ((unsigned long long)windows[i]->window) | ((buf[6] << 16) & 0xFF0000);
+                        windows[i]->window = ((unsigned long long)windows[i]->window) | ((buf[7] << 24) & 0xFF000000);
+                        windows[i]->window = ((unsigned long long)windows[i]->window) | ((buf[8] << 32) & 0xFF00000000);
+                        windows[i]->window = ((unsigned long long)windows[i]->window) | ((buf[9] << 40) & 0xFF0000000000);
+                        windows[i]->window = ((unsigned long long)windows[i]->window) | ((buf[10] << 48) & 0xFF000000000000);
+                        windows[i]->window = ((unsigned long long)windows[i]->window) | ((buf[11] << 56) & 0xFF00000000000000);
+
+
+                        // windows[i]->window = (struct Window *)(
+                        //         ((unsigned long long)buf[4]) | ((unsigned long long)buf[5] << 8)
+                        //         | ((unsigned long long)buf[6] << 16) | ((unsigned long long)buf[7] << 24)
+                        //         | ((unsigned long long)buf[8] << 32) | ((unsigned long long)buf[9] << 40)
+                        //         | ((unsigned long long)buf[10] << 48) | ((unsigned long long)buf[11] << 56));
+                        printk("RECEIVING WINDOW %llx\n", windows[i]->window);
                         drawNewWindow(windows[i]);
                 }
                 struct ReturnValue *newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
@@ -131,18 +151,23 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
         return count;
 }
 
-static void drawNewWindow(struct WindowRef * window) {
-        // long location;
-        // int x = window->x, y = window->y;
-        // while (y < window->y + window->height) {
-        //         x = window->x;
-        //         while (x < window->x + window->width - 1) {
-        //                 location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
-        //                 *((uint32_t*)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
-        //                 x++;
-        //         }
-        //         y++;
-        // }
+static void drawNewWindow(struct WindowRef * windowRef) {
+        struct Window * temp = kmalloc(sizeof(struct Window), GFP_KERNEL);
+        printk("LOCATION IN USERSPACE: %llx LOCATION IN PHYSICAL SPACE: %llx LOCATION OF TEMP: %llx\n", windowRef->window, virt_to_phys(windowRef->window), temp);
+        copy_from_user(temp, virt_to_phys(windowRef->window), sizeof(struct Window));
+        printk("DRAW NEW WINDOW x=%d y=%d width=%d height=%d\n", temp->x, temp->y, temp->width, temp->height);
+        long location;
+        int x = temp->x, y = temp->y;
+        while (y < temp->y + temp->height) {
+                x = temp->x;
+                while (x < temp->x + temp->width - 1) {
+                        location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
+                        *((uint32_t*)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
+                        x++;
+                }
+                y++;
+        }
+        kfree(temp);
 }
 
 static uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo) {
