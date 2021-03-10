@@ -110,7 +110,7 @@ static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char
 }
 
 #define KERNELMULTIMEDIA_API_CREATE_WINDOW 1
-#define KERNELMULTIMEDIA_API_GET_MESSAGE 2
+#define KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE 2
 
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
         int i = 0;
@@ -174,8 +174,8 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         }
                         returnValue->next = newReturnValue;
                 }
-        } else if (code == KERNELMULTIMEDIA_API_GET_MESSAGE) {
-                // TODO: Add message queues for processes
+        } else if (code == KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE) {
+                // TODO
         }
         return count;
 }
