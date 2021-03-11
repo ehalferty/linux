@@ -20,11 +20,30 @@ struct WindowRef {
         uint32_t pid;
         uint64_t addr;
 };
+struct __attribute__((__packed__)) Message {
+    uint32_t code;
+    uint64_t argA;
+    uint64_t argB;
+    uint32_t miscDataLength;
+    uint8_t * miscData;
+};
+#define NUM_MESSAGES_PER_PRIORITY 16
 struct MessageQueueRef {
         struct MessageQueueRef *next;
         uint32_t pid;
         uint64_t addr;
+        struct Message highPriority[NUM_MESSAGES_PER_PRIORITY];
+        struct Message mediumPriority[NUM_MESSAGES_PER_PRIORITY];
+        struct Message lowPriority[NUM_MESSAGES_PER_PRIORITY];
+        struct Message lowestPriority[NUM_MESSAGES_PER_PRIORITY];
 };
+struct InternalMessageQueue {
+    struct Message highPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct Message mediumPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct Message lowPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct Message lowestPriority[NUM_MESSAGES_PER_PRIORITY];
+} __packed;
+struct InternalMessageQueue tempMessageQueue;
 static struct WindowRef *windowRefs = 0;
 static struct MessageQueueRef *messageQueueRefs = 0;
 extern struct fb_info *registered_fb[FB_MAX] __read_mostly; // TODO: __read_mostly? That's not true... is it?
@@ -61,8 +80,11 @@ static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char
         }
         return 0;
 }
-#define KERNELMULTIMEDIA_API_REGISTER_WINDOW 1
-#define KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE 2
+#define KERNELMULTIMEDIA_API_REGISTER_WINDOW 1001
+#define KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE 1002
+#define KERNELMULTIMEDIA_API_CHECK_MESSAGES 1003
+#define KERNELMULTIMEDIA_MSG_WELCOME 9998
+#define KERNELMULTIMEDIA_MSG_HELLO 9999
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
         int i, pid =  task_pid_nr(current);
         uint32_t code = 0, miscDataLength = 0;
@@ -111,8 +133,15 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 struct MessageQueueRef *messageQueueRef, *newMessageQueueRef;
                 printk("RECEIVED KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE from PID %d ADDR=0x%08llx\n", pid, argA);
                 newMessageQueueRef = (struct MessageQueueRef *)kmalloc(sizeof(struct MessageQueueRef), GFP_KERNEL);
+                i = 0; while (i < NUM_MESSAGES_PER_PRIORITY) { newMessageQueueRef->highPriority[i].code = 0; i++; }
+                i = 0; while (i < NUM_MESSAGES_PER_PRIORITY) { newMessageQueueRef->mediumPriority[i].code = 0; i++; }
+                i = 0; while (i < NUM_MESSAGES_PER_PRIORITY) { newMessageQueueRef->lowPriority[i].code = 0; i++; }
+                i = 0; while (i < NUM_MESSAGES_PER_PRIORITY) { newMessageQueueRef->lowestPriority[i].code = 0; i++; }
+                // Put a high-pririty hello-world message into the queue
+                newMessageQueueRef->highPriority[0].code = KERNELMULTIMEDIA_MSG_WELCOME;
+                newMessageQueueRef->pid = pid;
                 messageQueueRef = messageQueueRefs;
-                if (messageQueueRef == NULL) { messageQueueRef = newMessageQueueRef; }
+                if (messageQueueRef == NULL) { messageQueueRefs = newMessageQueueRef; }
                 else {
                         while (messageQueueRef->next != NULL) {
                                 if (messageQueueRef->addr == argA) { /*Already registered this window? TODO: Ignore or error? */ }
@@ -120,7 +149,61 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         }
                         messageQueueRef->next = newMessageQueueRef;
                 }
-                // TODO: Throw a welcome message onto the queue
+                newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
+                newReturnValue->pid = pid;
+                newReturnValue->next = NULL;
+                newReturnValue->size = 16;
+                newReturnValue->data = (char *)kmalloc(16, GFP_KERNEL);
+                sprintf(newReturnValue->data, "Hello, world!");
+                returnValue = returnValues;
+                if (returnValue == NULL) {
+                        returnValues = newReturnValue;
+                } else {
+                        while (returnValue->next != NULL) {
+                                if (returnValue->pid == pid) {
+                                        // This will probably happen if someone has more than one thread calling this API.
+                                        // Probably best to discourage that, or use thread IDs somehow to keep track of return values.
+                                        printk("Ruh-roh, already a return value for that PID. This is a big problem... pid=%d\n", pid);
+                                        break;
+                                }
+                                returnValue = returnValue->next;
+                        }
+                        returnValue->next = newReturnValue;
+                }
+        } else if (code == KERNELMULTIMEDIA_API_CHECK_MESSAGES) {
+                struct MessageQueueRef *messageQueueRef;
+                printk("RECEIVED KERNELMULTIMEDIA_API_CHECK_MESSAGES from PID %d\n", pid);
+                // When messages are sent to a thread, the kernel queues them up in an internal queue. When this call happens,
+                // the kernel can safely assume that the user isn't messing with messages. The kernel copies any pending
+                // messages from it's own queue into the user's queue.
+                
+                // Find internal queues for this thread
+                messageQueueRef = messageQueueRefs;
+                if (messageQueueRef != NULL) {
+                        while (messageQueueRef != NULL) {
+                                printk("mqrp=%d\n", messageQueueRef->pid);
+                                if (messageQueueRef->pid == pid) break;
+                                messageQueueRef = messageQueueRef->next;
+                        }
+                }
+                if (messageQueueRef != NULL) {
+                        // Check if there are any messages on the internal queue for this thread.
+                        i = 0;
+                        while (i < NUM_MESSAGES_PER_PRIORITY) {
+                                if (messageQueueRef->highPriority[i].code != 0) {
+                                        // Clone the user message queue
+                                        copy_from_user(&tempMessageQueue, (void *)messageQueueRef->addr, sizeof(struct InternalMessageQueue));
+                                        // TODO: Move messages from the internal queue to the temp queue, then write it back to the user memory
+                                        printk("AAA %d %llx\n", tempMessageQueue.highPriority[0].code, messageQueueRef->addr);
+                                        panic("HI THERE 2");
+                                }
+                                i++;
+                        }
+                }
+
+                
+
+
                 newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
                 newReturnValue->pid = pid;
                 newReturnValue->next = NULL;
