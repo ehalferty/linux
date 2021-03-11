@@ -37,7 +37,7 @@ struct MessageQueueRef {
         struct Message lowPriority[NUM_MESSAGES_PER_PRIORITY];
         struct Message lowestPriority[NUM_MESSAGES_PER_PRIORITY];
 };
-struct InternalMessage { // TODO: Maybe use this for API calls too
+struct TempMessage { // TODO: Maybe use this for API calls too
     uint32_t code;
     uint64_t argA;
     uint64_t argB;
@@ -45,13 +45,13 @@ struct InternalMessage { // TODO: Maybe use this for API calls too
     uint8_t * miscData;
     uint32_t handled;
 } __packed;
-struct InternalMessageQueue {
-    struct InternalMessage highPriority[NUM_MESSAGES_PER_PRIORITY];
-    struct InternalMessage mediumPriority[NUM_MESSAGES_PER_PRIORITY];
-    struct InternalMessage lowPriority[NUM_MESSAGES_PER_PRIORITY];
-    struct InternalMessage lowestPriority[NUM_MESSAGES_PER_PRIORITY];
+struct TempMessageQueue {
+    struct TempMessage highPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct TempMessage mediumPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct TempMessage lowPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct TempMessage lowestPriority[NUM_MESSAGES_PER_PRIORITY];
 } __packed;
-struct InternalMessageQueue tempMessageQueue;
+struct TempMessageQueue tempMessageQueue;
 static struct WindowRef *windowRefs = 0;
 static struct MessageQueueRef *messageQueueRefs = 0;
 extern struct fb_info *registered_fb[FB_MAX] __read_mostly; // TODO: __read_mostly? That's not true... is it?
@@ -199,7 +199,9 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         // Check if there are any messages on the internal queue for this thread.
                         i = 0;
                         while (i < NUM_MESSAGES_PER_PRIORITY) {
-                                if (messageQueueRef->highPriority[i].code != 0 || messageQueueRef->mediumPriority[i].code != 0 || messageQueueRef->lowPriority[i].code != 0 || messageQueueRef->lowestPriority[i].code != 0) {
+                                if (messageQueueRef->highPriority[i].code != 0 || messageQueueRef->mediumPriority[i].code != 0 ||
+                                        messageQueueRef->lowPriority[i].code != 0 || messageQueueRef->lowestPriority[i].code != 0)
+                                {
                                         newMessages = 1;
                                         break;
                                 }
@@ -207,19 +209,27 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         }
                         if (newMessages) {
                                 // Clone the user message queue
-                                res = copy_from_user(&tempMessageQueue, (struct InternalMessageQueue *)messageQueueRef->addr, sizeof(struct InternalMessageQueue));
-                                // TODO: Move messages from the internal queue to the temp queue, then write it back to the user memory
-                                printk("AAA %d %llx %d %ld\n", tempMessageQueue.highPriority[0].code, messageQueueRef->addr, messageQueueRef->pid, res);
-                                panic("HI THERE 2");
-                                // TODO: Go back through the list, and move messages to the user queue.
-
+                                res = copy_from_user(&tempMessageQueue, (struct TempMessageQueue *)messageQueueRef->addr, sizeof(struct TempMessageQueue));
+                                // Go back through the list, and move messages from the internal queue to the temp queue.
+                                i = 0;
                                 while (i < NUM_MESSAGES_PER_PRIORITY) {
                                         if (messageQueueRef->highPriority[i].code) {
+                                                // TODO: Add it to the temp queue
+                                        }
+                                        if (messageQueueRef->mediumPriority[i].code) {
+                                                // TODO: Add it to the temp queue
+                                        }
+                                        if (messageQueueRef->lowPriority[i].code) {
+                                                // TODO: Add it to the temp queue
+                                        }
+                                        if (messageQueueRef->lowestPriority[i].code) {
                                                 // TODO: Add it to the temp queue
                                         }
                                         i++;
                                 }
                                 // TODO: Write temp queue back to user memory
+                                res = copy_to_user((struct TempMessageQueue *)messageQueueRef->addr, &tempMessageQueue, sizeof(struct TempMessageQueue));
+                                // TODO: Eventually: Copy miscData also (once we have messages that use it)
                         }
                 }
 
