@@ -181,7 +181,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 }
         } else if (code == KERNELMULTIMEDIA_API_CHECK_MESSAGES) {
                 struct MessageQueueRef *messageQueueRef;
-                uint32_t res;
+                uint32_t res, newMessage = 0;
                 printk("RECEIVED KERNELMULTIMEDIA_API_CHECK_MESSAGES from PID %d\n", pid);
                 // When messages are sent to a thread, the kernel queues them up in an internal queue. When this call happens,
                 // the kernel can safely assume that the user isn't messing with messages. The kernel copies any pending
@@ -199,14 +199,27 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         // Check if there are any messages on the internal queue for this thread.
                         i = 0;
                         while (i < NUM_MESSAGES_PER_PRIORITY) {
-                                if (messageQueueRef->highPriority[i].code != 0) {
-                                        // Clone the user message queue
-                                        res = copy_from_user(&tempMessageQueue, (struct InternalMessageQueue *)messageQueueRef->addr, sizeof(struct InternalMessageQueue));
-                                        // TODO: Move messages from the internal queue to the temp queue, then write it back to the user memory
-                                        printk("AAA %d %llx %d %ld\n", tempMessageQueue.highPriority[0].code, messageQueueRef->addr, messageQueueRef->pid, res);
-                                        panic("HI THERE 2");
+                                if (messageQueueRef->highPriority[i].code != 0 || messageQueueRef->mediumPriority[i].code != 0 || messageQueueRef->lowPriority[i].code != 0 || messageQueueRef->lowestPriority[i].code != 0) {
+                                        newMessages = 1;
+                                        break;
                                 }
                                 i++;
+                        }
+                        if (newMessages) {
+                                // Clone the user message queue
+                                res = copy_from_user(&tempMessageQueue, (struct InternalMessageQueue *)messageQueueRef->addr, sizeof(struct InternalMessageQueue));
+                                // TODO: Move messages from the internal queue to the temp queue, then write it back to the user memory
+                                printk("AAA %d %llx %d %ld\n", tempMessageQueue.highPriority[0].code, messageQueueRef->addr, messageQueueRef->pid, res);
+                                panic("HI THERE 2");
+                                // TODO: Go back through the list, and move messages to the user queue.
+
+                                while (i < NUM_MESSAGES_PER_PRIORITY) {
+                                        if (messageQueueRef->highPriority[i].code) {
+                                                // TODO: Add it to the temp queue
+                                        }
+                                        i++;
+                                }
+                                // TODO: Write temp queue back to user memory
                         }
                 }
 
