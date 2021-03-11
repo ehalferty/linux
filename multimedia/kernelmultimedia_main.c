@@ -1,173 +1,106 @@
 #include "kernelmultimedia_main.h"
 #include <linux/module.h>
 #include <linux/init.h>
-
 #include <linux/fs.h>
 #include <asm/segment.h>
 #include <asm/uaccess.h>
 #include <linux/buffer_head.h>
-
 #include "../include/linux/syscalls.h"
 #include "../include/linux/fb.h"
 
-struct CreateWindowInfo {
-    int32_t x;
-    int32_t y;
-    int32_t width;
-    int32_t height;
-    char title[256];
-} __packed;
-
 struct ReturnValue {
         struct ReturnValue *next;
-        char *data;
-        int size;
-        int pid;
+        uint8_t *data;
+        uint32_t size;
+        uint32_t pid;
 };
-
 struct ReturnValue *returnValues = 0;
-
-#define INITIAL_WINDOW_ARRAY_SIZE 128
-#define BACKGROUND_GRID_SIZE 32
-
-// Note: Any changes here should be mirrored in a header file
-struct Window {
-        int pid;
-        int x;
-        int y;
-        int width;
-        int height;
+struct WindowRef {
+        struct WindowRef *next;
+        uint32_t pid;
+        uint64_t addr;
 };
-
-static struct Window **windows = 0;
-static int numWindows; // (Size of above array, not the number of actual windows in existence).
-
-extern int num_registered_fb;
-extern struct fb_info *registered_fb[FB_MAX] __read_mostly;
-
+struct MessageQueueRef {
+        struct MessageQueueRef *next;
+        uint32_t pid;
+        uint64_t addr;
+};
+static struct WindowRef *windowRefs = 0;
+static struct MessageQueueRef *messageQueueRefs = 0;
+extern struct fb_info *registered_fb[FB_MAX] __read_mostly; // TODO: __read_mostly? That's not true... is it?
 struct kobject * kernelmultimedia_kobject;
 static struct kobj_attribute call_attribute;
-
 static struct fb_info *fb;
 static long screensize;
 static struct fb_fix_screeninfo *finfo;
 static struct fb_var_screeninfo *vinfo;
-
 static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 static int __init kernelmultimedia_init(void);
 static void __exit kernelmultimedia_exit(void);
-static void drawNewWindow(struct Window * window);
+static void drawNewWindow(struct WindowRef *windowRef);
 static uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo);
 
-
-static void drawNewWindow(struct Window * window) {
-        // struct Window * temp = kmalloc(sizeof(struct Window), GFP_KERNEL);
-        // struct Window * temp2 = virt_to_phys(windowRef->window);
-        // printk("LOCATION IN USERSPACE: %llx LOCATION IN PHYSICAL SPACE: %llx LOCATION OF TEMP: %llx\n", windowRef->window, temp2, temp);
-        // copy_from_user(temp, temp2, sizeof(struct Window));
-        // printk("PHYS: %02x %02x %02x %02x\n", ((char *)temp)[0], ((char *)temp)[1], ((char *)temp)[2], ((char *)temp)[3]);
-        
-        // printk("DRAW NEW WINDOW x=%d y=%d width=%d height=%d\n", temp->x, temp->y, temp->width, temp->height);
-        long location;
-        int x = window->x, y = window->y;
-        while (y < window->y + window->height) {
-                x = window->x;
-                while (x < window->x + window->width - 1) {
-                        location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
-                        *((uint32_t *)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
-                        x++;
-                }
-                y++;
-        }
-        // kfree(temp);
-}
-
+static void drawNewWindow(struct WindowRef *windowRef) {}
 static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-        int pid =  task_pid_nr(current);
+        int size, pid =  task_pid_nr(current);
         struct ReturnValue *prev = 0;
-        // Go through return values to see if there is one for that pid.
-        struct ReturnValue *returnValue = returnValues;
+        struct ReturnValue *returnValue = returnValues; // Go through return values to see if there is one for that pid.
         while (returnValue != NULL) {
-                if (returnValue->pid == pid) {
-                        break;
-                }
+                if (returnValue->pid == pid) break;
                 prev = returnValue;
                 returnValue = returnValue->next;
         }
         if (returnValue != NULL) {
-                if (prev == NULL) {
-                        returnValues = returnValue->next;
-                } else if (returnValue->next != NULL) {
-                        prev->next = returnValue->next;
-                }
+                if (prev == NULL) { returnValues = returnValue->next; }
+                else if (returnValue->next != NULL) { prev->next = returnValue->next; }
                 memcpy(buf, returnValue->data, returnValue->size);
-                int size = returnValue->size;
+                size = returnValue->size;
                 kfree(returnValue);
                 return size;
         }
         return 0;
 }
-
-#define KERNELMULTIMEDIA_API_CREATE_WINDOW 1
+#define KERNELMULTIMEDIA_API_REGISTER_WINDOW 1
 #define KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE 2
-
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-        int i = 0;
-        int found = 0;
-        int pid =  task_pid_nr(current);
+        int i, pid =  task_pid_nr(current);
         uint32_t code = 0, miscDataLength = 0;
         uint64_t argA = 0, argB = 0;
-        char * miscData = NULL;
-        while (i < 4) { code |= (buf[i] << (i * 8)); i++; }
-        i = 0;
-        while (i < 8) { argA |= (buf[i + 4] << (i * 8)); i++; }
-        i = 0;
-        while (i < 8) { argB |= (buf[i + 12] << (i * 8)); i++; }
-        i = 0;
-        while (i < 4) { miscDataLength |= (buf[i + 20] << (i * 8)); i++; }
-
-        printk("RECEIVED KERNELMULTIMEDIA API CALL: code=%lu argA=%08x argB=%08x miscDatLen=%lu\n", code, argA, argB, miscDataLength);
-
-        if (code == KERNELMULTIMEDIA_API_CREATE_WINDOW) {
-                printk("RECEIVED KERNELMULTIMEDIA_API_CREATE_WINDOW from PID %d\n", pid);
-                struct CreateWindowInfo * info = kmalloc(sizeof(struct CreateWindowInfo), GFP_KERNEL);
-                memcpy(info, &buf[24], sizeof(struct CreateWindowInfo));
-                printk("x=%d y=%d width=%d height=%d\n", info->x, info->y, info->width, info->height);
-                while (i < numWindows) {
-                        if (windows[i] == NULL) {
-                                found = 1;
-                                break;
+        struct ReturnValue *returnValue, *newReturnValue;
+        i = 0; while (i < 4) { code |= ((buf[i] << (i * 8)) & (0xFF << (i * 8))); i++; }
+        i = 0; while (i < 8) { argA |= ((buf[i + 4] << (i * 8)) & (0xFF << (i * 8))); i++; }
+        i = 0; while (i < 8) { argB |= ((buf[i + 12] << (i * 8)) & (0xFF << (i * 8))); i++; }
+        i = 0; while (i < 4) { miscDataLength |= ((buf[i + 20] << (i * 8)) & (0xFF << (i * 8))); i++; }
+        printk("RECEIVED KERNELMULTIMEDIA API CALL: code=%u argA=%08llx argB=%08llx miscDatLen=%u\n", code, argA, argB, miscDataLength);
+        if (code == KERNELMULTIMEDIA_API_REGISTER_WINDOW) {
+                struct WindowRef *windowRef, *newWindowRef;
+                printk("RECEIVED KERNELMULTIMEDIA_API_REGISTER_WINDOW from PID %d ADDR=0x%08llx\n", pid, argA);
+                newWindowRef = (struct WindowRef *)kmalloc(sizeof(struct WindowRef), GFP_KERNEL);
+                windowRef = windowRefs;
+                if (windowRef == NULL) { windowRef = newWindowRef; }
+                else {
+                        while (windowRef->next != NULL) {
+                                if (windowRef->addr == argA) { /*Already registered this window? TODO: Ignore or error? */ }
+                                windowRef = windowRef->next;
                         }
-                        i++;
+                        windowRef->next = newWindowRef;
                 }
-                if (!found) {
-                        printk("ERROR!! Need to krealloc windows.\n");
-                } else {
-                        windows[i] = kmalloc(sizeof(struct Window), GFP_KERNEL);
-                        windows[i]->pid = pid;
-                        windows[i]->x = info->x;
-                        windows[i]->y = info->y;
-                        windows[i]->width = info->width;
-                        windows[i]->height = info->height;
-                        drawNewWindow(windows[i]);
-                }
-                struct ReturnValue *newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
+                drawNewWindow(newWindowRef);
+                newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
                 newReturnValue->pid = pid;
                 newReturnValue->next = NULL;
                 newReturnValue->size = 16;
                 newReturnValue->data = (char *)kmalloc(16, GFP_KERNEL);
                 sprintf(newReturnValue->data, "Hello, world!");
-
-                struct ReturnValue *returnValue = returnValues;
-                if (returnValue == NULL) {
-                        returnValues = newReturnValue;
-                } else {
+                returnValue = returnValues;
+                if (returnValue == NULL) { returnValues = newReturnValue; }
+                else {
                         while (returnValue->next != NULL) {
                                 if (returnValue->pid == pid) {
+                                        printk("Ruh-roh, already a return value for that PID. This is a big problem... pid=%d\n", pid);
                                         // This will probably happen if someone has more than one thread calling this API.
                                         // Probably best to discourage that, or use thread IDs somehow to keep track of return values.
-                                        printk("Ruh-roh, already a return value for that PID. This is a big problem... pid=%d\n", pid);
                                         break;
                                 }
                                 returnValue = returnValue->next;
@@ -175,30 +108,26 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         returnValue->next = newReturnValue;
                 }
         } else if (code == KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE) {
-                printk("WHAT THE HELL %llu\n", argA);
-                printk("WHAT THE HELL %llu\n", argB);
-                // TODO
-                uint8_t *buf3 = kmalloc(1024, GFP_KERNEL);
-                i = 0;
-                while (i < 1024) {
-                        buf3[i] = 0xFF;
-                        i++;
+                struct MessageQueueRef *messageQueueRef, *newMessageQueueRef;
+                printk("RECEIVED KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE from PID %d ADDR=0x%08llx\n", pid, argA);
+                newMessageQueueRef = (struct MessageQueueRef *)kmalloc(sizeof(struct MessageQueueRef), GFP_KERNEL);
+                messageQueueRef = messageQueueRefs;
+                if (messageQueueRef == NULL) { messageQueueRef = newMessageQueueRef; }
+                else {
+                        while (messageQueueRef->next != NULL) {
+                                if (messageQueueRef->addr == argA) { /*Already registered this window? TODO: Ignore or error? */ }
+                                messageQueueRef = messageQueueRef->next;
+                        }
+                        messageQueueRef->next = newMessageQueueRef;
                 }
-                // uint64_t asdf = 0xFFFFFFFFFFFFFFFF;
-                printk("22222222 messageQueue=%llu\n", argA);
-                printk("22222222 argB=%llu\n", argB);
-                copy_to_user(argA, 123, 1);
-                copy_to_user(argA + 1, 123, 1);
-                copy_to_user(argA + 2, 123, 1);
-                copy_to_user(argA + 3, 123, 1);
-                struct ReturnValue *newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
+                // TODO: Throw a welcome message onto the queue
+                newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
                 newReturnValue->pid = pid;
                 newReturnValue->next = NULL;
                 newReturnValue->size = 16;
                 newReturnValue->data = (char *)kmalloc(16, GFP_KERNEL);
-                sprintf(newReturnValue->data, "Hello, world 2!");
-
-                struct ReturnValue *returnValue = returnValues;
+                sprintf(newReturnValue->data, "Hello, world!");
+                returnValue = returnValues;
                 if (returnValue == NULL) {
                         returnValues = newReturnValue;
                 } else {
@@ -216,30 +145,19 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
         }
         return count;
 }
-
 static uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo) {
 	return (r<<vinfo->red.offset) | (g<<vinfo->green.offset) | (b<<vinfo->blue.offset);
 }
-
 // Called as one of the last thing the kernel does before passing control to init process(es)
 // Sets up the double-buffered framebuffer, renders a grey background, marks the screen as clean.
 void kernelmultimedia_setup() {
         long location;
         int x = 0, y = 0;
-        ssize_t res;
-
+        printk("SETTING UP KERNEL MULTIMEDIA\n");
         fb = registered_fb[0];
 	finfo = &(fb->fix);
 	vinfo = &(fb->var);
         screensize = vinfo->yres_virtual * finfo->line_length;
-
-        printk("SETTING UP KERNEL MULTIMEDIA\n");
-        
-        // TODO: Should check if num_registered_fb > 1 and decide which to show??!
-        printk("num_registered_fb=%d\n", num_registered_fb);
-        printk("xres=%d yres=%d xoffset=%d yoffset=%d bits_per_pixel=%d line_length=%d yres_virtual=%d line_length=%d screensize=%ld\n",
-                vinfo->xres, vinfo->yres, vinfo->xoffset, vinfo->yoffset, vinfo->bits_per_pixel,
-                finfo->line_length, vinfo->yres_virtual, finfo->line_length, screensize);
         while (y < vinfo->yres) {
                 x = 0;
                 while (x < vinfo->xres - 1) {
@@ -249,40 +167,25 @@ void kernelmultimedia_setup() {
                 }
                 y++;
         }
-        // Init windows with a few empty pointers
-        windows = kmalloc(INITIAL_WINDOW_ARRAY_SIZE * sizeof(struct Window *), GFP_KERNEL);
-        numWindows = INITIAL_WINDOW_ARRAY_SIZE;
 }
-
 EXPORT_SYMBOL(kernelmultimedia_setup);
-
 static int __init kernelmultimedia_init(void) {
         int error;
         printk("KERNEL MULTIMEDIA ENABLED\n");
-
         kernelmultimedia_kobject = kobject_create_and_add("multimedia", kernel_kobj);
-        if(!kernelmultimedia_kobject) {
-                return -ENOMEM;
-        }
-
+        if(!kernelmultimedia_kobject) { return -ENOMEM; }
         call_attribute.attr.name = "call";
         call_attribute.attr.mode = 0660;
         call_attribute.show = call_show;
         call_attribute.store = call_store;
-
         error = sysfs_create_file(kernelmultimedia_kobject, &call_attribute.attr);
-        if (error) {
-                printk("Failed to create node: /sys/kernel/multimedia/call \n");
-                return -1;
-        }
+        if (error) { printk("Failed to create node: /sys/kernel/multimedia/call \n"); return -1; }
         return 0;
 }
-
 static void __exit kernelmultimedia_exit(void) {
         kobject_put(kernelmultimedia_kobject);
         printk("Kernel multimedia module uninitialized successfully\n");
 }
-
 module_init(kernelmultimedia_init);
 module_exit(kernelmultimedia_exit);
 MODULE_LICENSE("GPL");
@@ -291,12 +194,81 @@ MODULE_AUTHOR("edwardhalferty");
 
 
 
+// extern int num_registered_fb;
+
+        // printk("num_registered_fb=%d\n", num_registered_fb); // TODO: Should check if num_registered_fb > 1 and decide which to show??!
+        // printk("xres=%d yres=%d xoffset=%d yoffset=%d bits_per_pixel=%d line_length=%d yres_virtual=%d line_length=%d screensize=%ld\n",
+        //         vinfo->xres, vinfo->yres, vinfo->xoffset, vinfo->yoffset, vinfo->bits_per_pixel,
+        //         finfo->line_length, vinfo->yres_virtual, finfo->line_length, screensize);
+
+        // Init windows with a few empty pointers
+        // windows = kmalloc(INITIAL_WINDOW_ARRAY_SIZE * sizeof(struct Window *), GFP_KERNEL);
+        // numWindows = INITIAL_WINDOW_ARRAY_SIZE;
+
+// static void drawNewWindow(struct WindowRef *windowRef) {
+//         // struct Window * temp = kmalloc(sizeof(struct Window), GFP_KERNEL);
+//         // struct Window * temp2 = virt_to_phys(windowRef->window);
+//         // printk("LOCATION IN USERSPACE: %llx LOCATION IN PHYSICAL SPACE: %llx LOCATION OF TEMP: %llx\n", windowRef->window, temp2, temp);
+//         // copy_from_user(temp, temp2, sizeof(struct Window));
+//         // printk("PHYS: %02x %02x %02x %02x\n", ((char *)temp)[0], ((char *)temp)[1], ((char *)temp)[2], ((char *)temp)[3]);
+        
+//         // printk("DRAW NEW WINDOW x=%d y=%d width=%d height=%d\n", temp->x, temp->y, temp->width, temp->height);
+//         // long location;
+//         // int x = window->x, y = window->y;
+//         // while (y < window->y + window->height) {
+//         //         x = window->x;
+//         //         while (x < window->x + window->width - 1) {
+//         //                 location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
+//         //                 *((uint32_t *)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
+//         //                 x++;
+//         //         }
+//         //         y++;
+//         // }
+//         // kfree(temp);
+// }
 
 
 
+                // TODO
+                // //struct MessageQueueRef
+                // uint8_t *buf3 = kmalloc(1024, GFP_KERNEL);
+                // i = 0;
+                // while (i < 1024) {
+                //         buf3[i] = 0xFF;
+                //         i++;
+                // }
+                // // uint64_t asdf = 0xFFFFFFFFFFFFFFFF;
+                // printk("22222222 messageQueue=%llu\n", argA);
+                // printk("22222222 argB=%llu\n", argB);
+                // uint64_t ress = copy_to_user(argA, buf3, 10);
+                // printk("]]]]res=%llu\n", ress);
+                // struct ReturnValue *newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
+                // newReturnValue->pid = pid;
+                // newReturnValue->next = NULL;
+                // newReturnValue->size = 16;
+                // newReturnValue->data = (char *)kmalloc(16, GFP_KERNEL);
+                // sprintf(newReturnValue->data, "Hello, world 2!");
 
 
 
+                // struct CreateWindowInfo * info = kmalloc(sizeof(struct CreateWindowInfo), GFP_KERNEL);
+                // memcpy(info, &buf[24], sizeof(struct CreateWindowInfo));
+                // printk("x=%d y=%d width=%d height=%d\n", info->x, info->y, info->width, info->height);
+                // while (i < numWindows) {
+                //         if (windowRefs[i] == NULL) {
+                //                 found = 1;
+                //                 break;
+                //         }
+                //         i++;
+                // }
+                // if (!found) {
+                //         printk("ERROR!! Need to krealloc windowrefs.\n");
+                // } else {
+                //         windowRefs[i] = kmalloc(sizeof(struct WindowRef), GFP_KERNEL);
+                //         windowRefs[i]->pid = pid;
+                //         windowRefs[i]->addr = argA;
+                //         drawNewWindow(windowRefs[i]);
+                // }
 
                 // struct CreateWindowInfo * info = (struct CreateWindowInfo *)(buf + 24);
                 // uint32_t x = 0, y = 0, width = 0, height = 0;
