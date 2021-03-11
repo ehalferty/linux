@@ -37,11 +37,19 @@ struct MessageQueueRef {
         struct Message lowPriority[NUM_MESSAGES_PER_PRIORITY];
         struct Message lowestPriority[NUM_MESSAGES_PER_PRIORITY];
 };
+struct InternalMessage { // TODO: Maybe use this for API calls too
+    uint32_t code;
+    uint64_t argA;
+    uint64_t argB;
+    uint32_t miscDataLength;
+    uint8_t * miscData;
+    uint32_t handled;
+} __packed;
 struct InternalMessageQueue {
-    struct Message highPriority[NUM_MESSAGES_PER_PRIORITY];
-    struct Message mediumPriority[NUM_MESSAGES_PER_PRIORITY];
-    struct Message lowPriority[NUM_MESSAGES_PER_PRIORITY];
-    struct Message lowestPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct InternalMessage highPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct InternalMessage mediumPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct InternalMessage lowPriority[NUM_MESSAGES_PER_PRIORITY];
+    struct InternalMessage lowestPriority[NUM_MESSAGES_PER_PRIORITY];
 } __packed;
 struct InternalMessageQueue tempMessageQueue;
 static struct WindowRef *windowRefs = 0;
@@ -140,6 +148,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 // Put a high-pririty hello-world message into the queue
                 newMessageQueueRef->highPriority[0].code = KERNELMULTIMEDIA_MSG_WELCOME;
                 newMessageQueueRef->pid = pid;
+                newMessageQueueRef->addr = argA;
                 messageQueueRef = messageQueueRefs;
                 if (messageQueueRef == NULL) { messageQueueRefs = newMessageQueueRef; }
                 else {
@@ -172,6 +181,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 }
         } else if (code == KERNELMULTIMEDIA_API_CHECK_MESSAGES) {
                 struct MessageQueueRef *messageQueueRef;
+                uint32_t res;
                 printk("RECEIVED KERNELMULTIMEDIA_API_CHECK_MESSAGES from PID %d\n", pid);
                 // When messages are sent to a thread, the kernel queues them up in an internal queue. When this call happens,
                 // the kernel can safely assume that the user isn't messing with messages. The kernel copies any pending
@@ -181,7 +191,6 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 messageQueueRef = messageQueueRefs;
                 if (messageQueueRef != NULL) {
                         while (messageQueueRef != NULL) {
-                                printk("mqrp=%d\n", messageQueueRef->pid);
                                 if (messageQueueRef->pid == pid) break;
                                 messageQueueRef = messageQueueRef->next;
                         }
@@ -192,9 +201,9 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         while (i < NUM_MESSAGES_PER_PRIORITY) {
                                 if (messageQueueRef->highPriority[i].code != 0) {
                                         // Clone the user message queue
-                                        copy_from_user(&tempMessageQueue, (void *)messageQueueRef->addr, sizeof(struct InternalMessageQueue));
+                                        res = copy_from_user(&tempMessageQueue, (struct InternalMessageQueue *)messageQueueRef->addr, sizeof(struct InternalMessageQueue));
                                         // TODO: Move messages from the internal queue to the temp queue, then write it back to the user memory
-                                        printk("AAA %d %llx\n", tempMessageQueue.highPriority[0].code, messageQueueRef->addr);
+                                        printk("AAA %d %llx %d %ld\n", tempMessageQueue.highPriority[0].code, messageQueueRef->addr, messageQueueRef->pid, res);
                                         panic("HI THERE 2");
                                 }
                                 i++;
