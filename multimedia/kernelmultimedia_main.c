@@ -98,10 +98,10 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
         uint32_t code = 0, miscDataLength = 0;
         uint64_t argA = 0, argB = 0;
         struct ReturnValue *returnValue, *newReturnValue;
-        i = 0; while (i < 4) { code |= ((buf[i] << (i * 8)) & (0xFF << (i * 8))); i++; }
-        i = 0; while (i < 8) { argA |= ((buf[i + 4] << (i * 8)) & (0xFF << (i * 8))); i++; }
-        i = 0; while (i < 8) { argB |= ((buf[i + 12] << (i * 8)) & (0xFF << (i * 8))); i++; }
-        i = 0; while (i < 4) { miscDataLength |= ((buf[i + 20] << (i * 8)) & (0xFF << (i * 8))); i++; }
+        for (i = 0; i < 4; i++) { code |= ((buf[i] << (i * 8)) & (0xFF << (i * 8))); }
+        for (i = 0; i < 8; i++) { argA |= ((buf[i + 4] << (i * 8)) & (0xFF << (i * 8))); }
+        for (i = 0; i < 8; i++) { argB |= ((buf[i + 12] << (i * 8)) & (0xFF << (i * 8))); }
+        for (i = 0; i < 4; i++) { miscDataLength |= ((buf[i + 20] << (i * 8)) & (0xFF << (i * 8))); }
         printk("RECEIVED KERNELMULTIMEDIA API CALL: code=%u argA=%08llx argB=%08llx miscDatLen=%u\n", code, argA, argB, miscDataLength);
         if (code == KERNELMULTIMEDIA_API_REGISTER_WINDOW) {
                 struct WindowRef *windowRef, *newWindowRef;
@@ -141,10 +141,10 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 struct MessageQueueRef *messageQueueRef, *newMessageQueueRef;
                 printk("RECEIVED KERNELMULTIMEDIA_API_REGISTER_MESSAGE_QUEUE from PID %d ADDR=0x%08llx\n", pid, argA);
                 newMessageQueueRef = (struct MessageQueueRef *)kmalloc(sizeof(struct MessageQueueRef), GFP_KERNEL);
-                i = 0; while (i < NUM_MESSAGES_PER_PRIORITY) { newMessageQueueRef->highPriority[i].code = 0; i++; }
-                i = 0; while (i < NUM_MESSAGES_PER_PRIORITY) { newMessageQueueRef->mediumPriority[i].code = 0; i++; }
-                i = 0; while (i < NUM_MESSAGES_PER_PRIORITY) { newMessageQueueRef->lowPriority[i].code = 0; i++; }
-                i = 0; while (i < NUM_MESSAGES_PER_PRIORITY) { newMessageQueueRef->lowestPriority[i].code = 0; i++; }
+                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) { newMessageQueueRef->highPriority[i].code = 0; }
+                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) { newMessageQueueRef->mediumPriority[i].code = 0; }
+                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) { newMessageQueueRef->lowPriority[i].code = 0; }
+                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) { newMessageQueueRef->lowestPriority[i].code = 0; }
                 // Put a high-pririty hello-world message into the queue
                 newMessageQueueRef->highPriority[0].code = KERNELMULTIMEDIA_MSG_WELCOME;
                 newMessageQueueRef->pid = pid;
@@ -181,7 +181,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 }
         } else if (code == KERNELMULTIMEDIA_API_CHECK_MESSAGES) {
                 struct MessageQueueRef *messageQueueRef;
-                uint32_t res, newMessage = 0;
+                uint32_t res, newMessages = 0;
                 printk("RECEIVED KERNELMULTIMEDIA_API_CHECK_MESSAGES from PID %d\n", pid);
                 // When messages are sent to a thread, the kernel queues them up in an internal queue. When this call happens,
                 // the kernel can safely assume that the user isn't messing with messages. The kernel copies any pending
@@ -197,22 +197,19 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 }
                 if (messageQueueRef != NULL) {
                         // Check if there are any messages on the internal queue for this thread.
-                        i = 0;
-                        while (i < NUM_MESSAGES_PER_PRIORITY) {
-                                if (messageQueueRef->highPriority[i].code != 0 || messageQueueRef->mediumPriority[i].code != 0 ||
-                                        messageQueueRef->lowPriority[i].code != 0 || messageQueueRef->lowestPriority[i].code != 0)
-                                {
+                        struct Message *highPriority = &(messageQueueRef->highPriority[i]), *mediumPriority = &(messageQueueRef->mediumPriority[i]);
+                        struct Message *lowPriority = &(messageQueueRef->lowPriority[i]), *lowestPriority = &(messageQueueRef->lowestPriority[i]);
+                        for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                if (highPriority->code != 0 || mediumPriority->code != 0 || lowPriority->code != 0 || lowestPriority->code != 0) {
                                         newMessages = 1;
                                         break;
                                 }
-                                i++;
                         }
                         if (newMessages) {
                                 // Clone the user message queue
                                 res = copy_from_user(&tempMessageQueue, (struct TempMessageQueue *)messageQueueRef->addr, sizeof(struct TempMessageQueue));
                                 // Go back through the list, and move messages from the internal queue to the temp queue.
-                                i = 0;
-                                while (i < NUM_MESSAGES_PER_PRIORITY) {
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
                                         if (messageQueueRef->highPriority[i].code) {
                                                 // TODO: Add it to the temp queue
                                         }
@@ -225,7 +222,6 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                         if (messageQueueRef->lowestPriority[i].code) {
                                                 // TODO: Add it to the temp queue
                                         }
-                                        i++;
                                 }
                                 // TODO: Write temp queue back to user memory
                                 res = copy_to_user((struct TempMessageQueue *)messageQueueRef->addr, &tempMessageQueue, sizeof(struct TempMessageQueue));
@@ -273,14 +269,11 @@ void kernelmultimedia_setup() {
 	finfo = &(fb->fix);
 	vinfo = &(fb->var);
         screensize = vinfo->yres_virtual * finfo->line_length;
-        while (y < vinfo->yres) {
-                x = 0;
-                while (x < vinfo->xres - 1) {
+        for (y = 0; y < vinfo->yres; y++) {
+                for (x = 0; x < vinfo->xres - 1; x++) {
                         location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
                         *((uint32_t *)(fb->screen_base + location)) = pixel_color(0x80, 0x80, 0x80, vinfo);
-                        x++;
                 }
-                y++;
         }
 }
 EXPORT_SYMBOL(kernelmultimedia_setup);
