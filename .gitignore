@@ -157,3 +157,10 @@ x509.genkey
 
 # Documentation toolchain
 sphinx_*/
+
+arch/sparc/
+arch/s390/
+arch/powerpc/
+arch/parisc/
+arch/mips/
+arch/m68k/
