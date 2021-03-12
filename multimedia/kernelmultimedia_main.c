@@ -158,6 +158,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         }
                         messageQueueRef->next = newMessageQueueRef;
                 }
+                // TODO: What to return?
                 newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
                 newReturnValue->pid = pid;
                 newReturnValue->next = NULL;
@@ -181,7 +182,6 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
         } else if (code == KERNELMULTIMEDIA_API_CHECK_MESSAGES) {
                 struct MessageQueueRef *messageQueueRef;
                 uint32_t res, newMessages = 0;
-                // printk("RECEIVED KERNELMULTIMEDIA_API_CHECK_MESSAGES from PID %d\n", pid);
                 // When messages are sent to a thread, the kernel queues them up in an internal queue. When this call happens,
                 // the kernel can safely assume that the user isn't messing with messages. The kernel copies any pending
                 // messages from it's own queue into the user's queue.
@@ -216,7 +216,6 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                                 uint64_t foundASlot = 0;
                                                 for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
                                                         if (tempMessageQueue.highPriority[j].code == 0) {
-                                                                printk("INSERTING MESSAGE AT INDEX %d CODE %d\n", j, highPriority->code);
                                                                 // Copy from the internal queue
                                                                 memcpy(&tempMessageQueue.highPriority[j], highPriority, sizeof(struct TempMessageQueue));
                                                                 // Remove from internal queue
@@ -275,10 +274,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                 // TODO: Eventually: Copy miscData also (once we have messages that use it)
                         }
                 }
-
-                
-
-
+                // TODO: What to return?
                 newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
                 newReturnValue->pid = pid;
                 newReturnValue->next = NULL;
@@ -348,6 +344,10 @@ MODULE_AUTHOR("edwardhalferty");
 
 
 
+                // printk("RECEIVED KERNELMULTIMEDIA_API_CHECK_MESSAGES from PID %d\n", pid);
+                                                                // printk("INSERTING MESSAGE AT INDEX %d CODE %d\n", j, highPriority->code);
+                                // printk("XYZ=%d\n", tempMessageQueue.highPriority[0].code);
+                                // printk("XYZ=%d\n", tempMessageQueue.highPriority[1].code);
 
 // extern int num_registered_fb;
 
