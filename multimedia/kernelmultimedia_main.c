@@ -94,7 +94,7 @@ static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char
 #define KERNELMULTIMEDIA_MSG_WELCOME 9998
 #define KERNELMULTIMEDIA_MSG_HELLO 9999
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-        int i, pid =  task_pid_nr(current);
+        int i, j, pid =  task_pid_nr(current);
         uint32_t code = 0, miscDataLength = 0;
         uint64_t argA = 0, argB = 0;
         struct ReturnValue *returnValue, *newReturnValue;
@@ -102,7 +102,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
         for (i = 0; i < 8; i++) { argA |= ((buf[i + 4] << (i * 8)) & (0xFF << (i * 8))); }
         for (i = 0; i < 8; i++) { argB |= ((buf[i + 12] << (i * 8)) & (0xFF << (i * 8))); }
         for (i = 0; i < 4; i++) { miscDataLength |= ((buf[i + 20] << (i * 8)) & (0xFF << (i * 8))); }
-        printk("RECEIVED KERNELMULTIMEDIA API CALL: code=%u argA=%08llx argB=%08llx miscDatLen=%u\n", code, argA, argB, miscDataLength);
+        // printk("RECEIVED KERNELMULTIMEDIA API CALL: code=%u argA=%08llx argB=%08llx miscDatLen=%u\n", code, argA, argB, miscDataLength);
         if (code == KERNELMULTIMEDIA_API_REGISTER_WINDOW) {
                 struct WindowRef *windowRef, *newWindowRef;
                 printk("RECEIVED KERNELMULTIMEDIA_API_REGISTER_WINDOW from PID %d ADDR=0x%08llx\n", pid, argA);
@@ -165,9 +165,8 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 newReturnValue->data = (char *)kmalloc(16, GFP_KERNEL);
                 sprintf(newReturnValue->data, "Hello, world!");
                 returnValue = returnValues;
-                if (returnValue == NULL) {
-                        returnValues = newReturnValue;
-                } else {
+                if (returnValue == NULL) { returnValues = newReturnValue; }
+                else {
                         while (returnValue->next != NULL) {
                                 if (returnValue->pid == pid) {
                                         // This will probably happen if someone has more than one thread calling this API.
@@ -182,7 +181,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
         } else if (code == KERNELMULTIMEDIA_API_CHECK_MESSAGES) {
                 struct MessageQueueRef *messageQueueRef;
                 uint32_t res, newMessages = 0;
-                printk("RECEIVED KERNELMULTIMEDIA_API_CHECK_MESSAGES from PID %d\n", pid);
+                // printk("RECEIVED KERNELMULTIMEDIA_API_CHECK_MESSAGES from PID %d\n", pid);
                 // When messages are sent to a thread, the kernel queues them up in an internal queue. When this call happens,
                 // the kernel can safely assume that the user isn't messing with messages. The kernel copies any pending
                 // messages from it's own queue into the user's queue.
@@ -197,9 +196,9 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 }
                 if (messageQueueRef != NULL) {
                         // Check if there are any messages on the internal queue for this thread.
-                        struct Message *highPriority = &(messageQueueRef->highPriority[i]), *mediumPriority = &(messageQueueRef->mediumPriority[i]);
-                        struct Message *lowPriority = &(messageQueueRef->lowPriority[i]), *lowestPriority = &(messageQueueRef->lowestPriority[i]);
                         for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                struct Message *highPriority = &(messageQueueRef->highPriority[i]), *mediumPriority = &(messageQueueRef->mediumPriority[i]);
+                                struct Message *lowPriority = &(messageQueueRef->lowPriority[i]), *lowestPriority = &(messageQueueRef->lowestPriority[i]);
                                 if (highPriority->code != 0 || mediumPriority->code != 0 || lowPriority->code != 0 || lowestPriority->code != 0) {
                                         newMessages = 1;
                                         break;
@@ -210,20 +209,68 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                 res = copy_from_user(&tempMessageQueue, (struct TempMessageQueue *)messageQueueRef->addr, sizeof(struct TempMessageQueue));
                                 // Go back through the list, and move messages from the internal queue to the temp queue.
                                 for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
-                                        if (messageQueueRef->highPriority[i].code) {
-                                                // TODO: Add it to the temp queue
+                                        struct Message *highPriority = &(messageQueueRef->highPriority[i]), *mediumPriority = &(messageQueueRef->mediumPriority[i]);
+                                        struct Message *lowPriority = &(messageQueueRef->lowPriority[i]), *lowestPriority = &(messageQueueRef->lowestPriority[i]);
+                                        if (highPriority->code) {
+                                                // Go through the temp queue to find a spot
+                                                uint64_t foundASlot = 0;
+                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
+                                                        if (tempMessageQueue.highPriority[j].code == 0) {
+                                                                printk("INSERTING MESSAGE AT INDEX %d CODE %d\n", j, highPriority->code);
+                                                                // Copy from the internal queue
+                                                                memcpy(&tempMessageQueue.highPriority[j], highPriority, sizeof(struct TempMessageQueue));
+                                                                // Remove from internal queue
+                                                                highPriority->code = 0;
+                                                                foundASlot = 1;
+                                                                break;
+                                                        }
+                                                }
+                                                if (!foundASlot) { /* TODO: Do something if we can't find a place for it? (other priorities too) */ }
                                         }
-                                        if (messageQueueRef->mediumPriority[i].code) {
-                                                // TODO: Add it to the temp queue
+                                        if (mediumPriority->code) {
+                                                // Go through the temp queue to find a spot
+                                                uint64_t foundASlot = 0;
+                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
+                                                        if (tempMessageQueue.mediumPriority[j].code == 0) {
+                                                                // Copy from the internal queue
+                                                                memcpy(&tempMessageQueue.mediumPriority[j], mediumPriority, sizeof(struct TempMessageQueue));
+                                                                // Remove from internal queue
+                                                                mediumPriority->code = 0;
+                                                                foundASlot = 1;
+                                                                break;
+                                                        }
+                                                }
                                         }
-                                        if (messageQueueRef->lowPriority[i].code) {
-                                                // TODO: Add it to the temp queue
+                                        if (lowPriority->code) {
+                                                // Go through the temp queue to find a spot
+                                                uint64_t foundASlot = 0;
+                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
+                                                        if (tempMessageQueue.lowPriority[j].code == 0) {
+                                                                // Copy from the internal queue
+                                                                memcpy(&tempMessageQueue.lowPriority[j], lowPriority, sizeof(struct TempMessageQueue));
+                                                                // Remove from internal queue
+                                                                lowPriority->code = 0;
+                                                                foundASlot = 1;
+                                                                break;
+                                                        }
+                                                }
                                         }
-                                        if (messageQueueRef->lowestPriority[i].code) {
-                                                // TODO: Add it to the temp queue
+                                        if (lowestPriority->code) {
+                                                // Go through the temp queue to find a spot
+                                                uint64_t foundASlot = 0;
+                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
+                                                        if (tempMessageQueue.lowestPriority[j].code == 0) {
+                                                                // Copy from the internal queue
+                                                                memcpy(&tempMessageQueue.lowestPriority[j], lowestPriority, sizeof(struct TempMessageQueue));
+                                                                // Remove from internal queue
+                                                                lowestPriority->code = 0;
+                                                                foundASlot = 1;
+                                                                break;
+                                                        }
+                                                }
                                         }
                                 }
-                                // TODO: Write temp queue back to user memory
+                                // Write temp queue back to user memory
                                 res = copy_to_user((struct TempMessageQueue *)messageQueueRef->addr, &tempMessageQueue, sizeof(struct TempMessageQueue));
                                 // TODO: Eventually: Copy miscData also (once we have messages that use it)
                         }
