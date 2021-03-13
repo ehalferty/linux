@@ -22,8 +22,10 @@ struct WindowRef {
 };
 struct __attribute__((__packed__)) Message {
     uint32_t code;
+    uint64_t window;
     uint64_t argA;
     uint64_t argB;
+    uint32_t handled;
     uint32_t miscDataLength;
     uint8_t * miscData;
 };
@@ -39,11 +41,12 @@ struct MessageQueueRef {
 };
 struct TempMessage { // TODO: Maybe use this for API calls too
     uint32_t code;
+    uint64_t window;
     uint64_t argA;
     uint64_t argB;
+    uint32_t handled;
     uint32_t miscDataLength;
     uint8_t * miscData;
-    uint32_t handled;
 } __packed;
 struct TempMessageQueue {
     struct TempMessage highPriority[NUM_MESSAGES_PER_PRIORITY];
@@ -93,10 +96,12 @@ static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char
 #define KERNELMULTIMEDIA_API_CHECK_MESSAGES 1003
 #define KERNELMULTIMEDIA_MSG_WELCOME 9998
 #define KERNELMULTIMEDIA_MSG_HELLO 9999
+#define KERNELMULTIMEDIA_MSG_WINDOW_INIT 20000
 static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
         int i, j, pid =  task_pid_nr(current);
         uint32_t code = 0, miscDataLength = 0;
         uint64_t argA = 0, argB = 0;
+        struct MessageQueueRef *messageQueueRef;
         struct ReturnValue *returnValue, *newReturnValue;
         for (i = 0; i < 4; i++) { code |= ((buf[i] << (i * 8)) & (0xFF << (i * 8))); }
         for (i = 0; i < 8; i++) { argA |= ((buf[i + 4] << (i * 8)) & (0xFF << (i * 8))); }
@@ -105,6 +110,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
         // printk("RECEIVED KERNELMULTIMEDIA API CALL: code=%u argA=%08llx argB=%08llx miscDatLen=%u\n", code, argA, argB, miscDataLength);
         if (code == KERNELMULTIMEDIA_API_REGISTER_WINDOW) {
                 struct WindowRef *windowRef, *newWindowRef;
+                struct Message *newMessage;
                 printk("RECEIVED KERNELMULTIMEDIA_API_REGISTER_WINDOW from PID %d ADDR=0x%08llx\n", pid, argA);
                 newWindowRef = (struct WindowRef *)kmalloc(sizeof(struct WindowRef), GFP_KERNEL);
                 windowRef = windowRefs;
@@ -116,7 +122,29 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         }
                         windowRef->next = newWindowRef;
                 }
-                drawNewWindow(newWindowRef);
+                // Send an init message to the window. First, find internal queues for this thread
+                messageQueueRef = messageQueueRefs;
+                if (messageQueueRef != NULL) {
+                        while (messageQueueRef != NULL) {
+                                if (messageQueueRef->pid == pid) break;
+                                messageQueueRef = messageQueueRef->next;
+                        }
+                }
+                if (messageQueueRef == NULL) { /* TODO */ printk("Uh-oh, no message queue for this thread yet, but tried to create a window. That's an error!\n"); }
+                else {
+                        printk("Found message queue for PID\n");
+                        newMessage = (struct Message *)kmalloc(sizeof(struct Message), GFP_KERNEL);
+                        newMessage->code = KERNELMULTIMEDIA_MSG_WINDOW_INIT;
+                        newMessage->window = argA;
+                        newMessage->handled = 0;
+                        for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                if (messageQueueRef->lowPriority[i].code == 0 || messageQueueRef->lowPriority[i].handled == 1) {
+                                        memcpy(&messageQueueRef->lowPriority[i], newMessage, sizeof(struct Message));
+                                        break;
+                                }
+                        }
+                }
+                drawNewWindow(newWindowRef); // TODO: Should actually do this after the window callback gets to do some setup (send it a pre-draw init message)
                 newReturnValue = (struct ReturnValue *)kmalloc(sizeof(struct ReturnValue), GFP_KERNEL);
                 newReturnValue->pid = pid;
                 newReturnValue->next = NULL;
@@ -147,6 +175,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) { newMessageQueueRef->lowestPriority[i].code = 0; }
                 // Put a high-pririty hello-world message into the queue
                 newMessageQueueRef->highPriority[0].code = KERNELMULTIMEDIA_MSG_WELCOME;
+                newMessageQueueRef->highPriority[0].handled = 0;
                 newMessageQueueRef->pid = pid;
                 newMessageQueueRef->addr = argA;
                 messageQueueRef = messageQueueRefs;
@@ -241,6 +270,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                                 }
                                         }
                                         if (lowPriority->code) {
+                                                printk("Found a low-priority message to insert\n");
                                                 // Go through the temp queue to find a spot
                                                 uint64_t foundASlot = 0;
                                                 for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
@@ -253,6 +283,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                                                 break;
                                                         }
                                                 }
+                                                printk("Inserted at index %d code=%d handled=%d\n", j, tempMessageQueue.lowPriority[j].code, tempMessageQueue.lowPriority[j].handled);
                                         }
                                         if (lowestPriority->code) {
                                                 // Go through the temp queue to find a spot
