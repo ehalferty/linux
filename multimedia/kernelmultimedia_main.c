@@ -55,6 +55,14 @@ struct WindowRef {
         uint32_t pid;
         uint64_t addr;
 };
+struct Window {
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+    uint32_t styleFlags;
+    char title[256];
+} __packed;
 static struct WindowRef *windowRefs = 0;
 static struct MessageQueueRef *messageQueueRefs = 0;
 extern struct fb_info *registered_fb[FB_MAX] __read_mostly; // TODO: __read_mostly? That's not true... is it?
@@ -71,7 +79,45 @@ static void __exit kernelmultimedia_exit(void);
 static void drawNewWindow(struct WindowRef *windowRef);
 static uint32_t pixel_color(uint8_t r, uint8_t g, uint8_t b, struct fb_var_screeninfo *vinfo);
 
-static void drawNewWindow(struct WindowRef *windowRef) {}
+static void drawNewWindow(struct WindowRef *windowRef) {
+        struct Window *temp = kmalloc(sizeof(struct Window), GFP_KERNEL);
+        int res = copy_from_user(temp, (struct Window *)windowRef->addr, sizeof(struct Window));
+        printk("DRAW NEW WINDOW x=%d y=%d width=%d height=%d res=%d\n", temp->x, temp->y, temp->width, temp->height, res);
+        long location;
+        int x = temp->x, y = temp->y;
+        while (y < temp->y + temp->height) {
+                x = temp->x;
+                while (x < temp->x + temp->width - 1) {
+                        location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
+                        *((uint32_t *)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
+                        x++;
+                }
+                y++;
+        }
+        kfree(temp);
+}
+
+// static void drawNewWindow(struct WindowRef *windowRef) {
+//         // struct Window * temp = kmalloc(sizeof(struct Window), GFP_KERNEL);
+//         // struct Window * temp2 = virt_to_phys(windowRef->window);
+//         // printk("LOCATION IN USERSPACE: %llx LOCATION IN PHYSICAL SPACE: %llx LOCATION OF TEMP: %llx\n", windowRef->window, temp2, temp);
+//         // copy_from_user(temp, temp2, sizeof(struct Window));
+//         // printk("PHYS: %02x %02x %02x %02x\n", ((char *)temp)[0], ((char *)temp)[1], ((char *)temp)[2], ((char *)temp)[3]);
+        
+//         // printk("DRAW NEW WINDOW x=%d y=%d width=%d height=%d\n", temp->x, temp->y, temp->width, temp->height);
+//         // long location;
+//         // int x = window->x, y = window->y;
+//         // while (y < window->y + window->height) {
+//         //         x = window->x;
+//         //         while (x < window->x + window->width - 1) {
+//         //                 location = (x + vinfo->xoffset) * (vinfo->bits_per_pixel/8) + (y + vinfo->yoffset) * finfo->line_length;
+//         //                 *((uint32_t *)(fb->screen_base + location)) = pixel_color(0xFF, 0xFF, 0xFF, vinfo);
+//         //                 x++;
+//         //         }
+//         //         y++;
+//         // }
+//         // kfree(temp);
+// }
 static ssize_t call_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
         int size, pid =  task_pid_nr(current);
         struct ReturnValue *prev = 0;
@@ -113,6 +159,8 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                 struct Message *newMessage;
                 printk("RECEIVED KERNELMULTIMEDIA_API_REGISTER_WINDOW from PID %d ADDR=0x%08llx\n", pid, argA);
                 newWindowRef = (struct WindowRef *)kmalloc(sizeof(struct WindowRef), GFP_KERNEL);
+                newWindowRef->addr = argA;
+                newWindowRef->pid = pid;
                 windowRef = windowRefs;
                 if (windowRef == NULL) { windowRef = newWindowRef; }
                 else {
