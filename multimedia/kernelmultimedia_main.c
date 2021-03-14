@@ -139,7 +139,8 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         printk("SENDING KERNELMULTIMEDIA_MSG_WINDOW_INIT window=%llx", argA);
                         newMessage->handled = 0;
                         for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
-                                if (messageQueueRef->lowPriority[i].code == 0 || messageQueueRef->lowPriority[i].handled == 1) {
+                                if (messageQueueRef->lowPriority[i].code == 0 || messageQueueRef->lowPriority[i].handled != 0) {
+                                        printk("Inserting message into internal queue at index %d code=%d window=%llx\n", i, newMessage->code, newMessage->window);
                                         memcpy(&messageQueueRef->lowPriority[i], newMessage, sizeof(struct Message));
                                         break;
                                 }
@@ -237,6 +238,18 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         if (newMessages) {
                                 // Clone the user message queue
                                 res = copy_from_user(&tempMessageQueue, (struct TempMessageQueue *)messageQueueRef->addr, sizeof(struct TempMessageQueue));
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                        printk("copy_from_user highPriority[%d] code=%d window=%d\n", i, tempMessageQueue.highPriority[i].code, tempMessageQueue.highPriority[i].window);
+                                }
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                        printk("copy_from_user mediumPriority[%d] code=%d window=%d\n", i, tempMessageQueue.mediumPriority[i].code, tempMessageQueue.mediumPriority[i].window);
+                                }
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                        printk("copy_from_user lowPriority[%d] code=%d window=%d\n", i, tempMessageQueue.lowPriority[i].code, tempMessageQueue.lowPriority[i].window);
+                                }
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                        printk("copy_from_user lowestPriority[%d] code=%d window=%d\n", i, tempMessageQueue.lowestPriority[i].code, tempMessageQueue.lowestPriority[i].window);
+                                }
                                 // Go back through the list, and move messages from the internal queue to the temp queue.
                                 for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
                                         struct Message *highPriority = &(messageQueueRef->highPriority[i]), *mediumPriority = &(messageQueueRef->mediumPriority[i]);
@@ -244,10 +257,10 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                         if (highPriority->code) {
                                                 // Go through the temp queue to find a spot
                                                 uint64_t foundASlot = 0;
-                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
-                                                        if (tempMessageQueue.highPriority[j].code == 0) {
+                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY && foundASlot == 0; j++) {
+                                                        if (tempMessageQueue.highPriority[j].code == 0 || tempMessageQueue.highPriority[j].handled != 0) {
                                                                 // Copy from the internal queue
-                                                                memcpy(&tempMessageQueue.highPriority[j], highPriority, sizeof(struct TempMessageQueue));
+                                                                memcpy(&tempMessageQueue.highPriority[j], highPriority, sizeof(struct Message));
                                                                 // Remove from internal queue
                                                                 highPriority->code = 0;
                                                                 foundASlot = 1;
@@ -255,54 +268,75 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                                         }
                                                 }
                                                 if (!foundASlot) { /* TODO: Do something if we can't find a place for it? (other priorities too) */ }
+                                                else { messageQueueRef->highPriority[i].code = 0; }
                                         }
                                         if (mediumPriority->code) {
                                                 // Go through the temp queue to find a spot
                                                 uint64_t foundASlot = 0;
-                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
-                                                        if (tempMessageQueue.mediumPriority[j].code == 0) {
+                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY && foundASlot == 0; j++) {
+                                                        if (tempMessageQueue.mediumPriority[j].code == 0 || tempMessageQueue.mediumPriority[j].handled != 0) {
                                                                 // Copy from the internal queue
-                                                                memcpy(&tempMessageQueue.mediumPriority[j], mediumPriority, sizeof(struct TempMessageQueue));
+                                                                memcpy(&tempMessageQueue.mediumPriority[j], mediumPriority, sizeof(struct Message));
                                                                 // Remove from internal queue
                                                                 mediumPriority->code = 0;
                                                                 foundASlot = 1;
                                                                 break;
                                                         }
                                                 }
+                                                if (!foundASlot) { /* TODO: Do something if we can't find a place for it? (other priorities too) */ }
+                                                else { messageQueueRef->mediumPriority[i].code = 0; }
                                         }
                                         if (lowPriority->code) {
                                                 printk("Found a low-priority message to insert\n");
                                                 // Go through the temp queue to find a spot
                                                 uint64_t foundASlot = 0;
-                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
-                                                        if (tempMessageQueue.lowPriority[j].code == 0) {
+                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY && foundASlot == 0; j++) {
+                                                        if (tempMessageQueue.lowPriority[j].code == 0 || tempMessageQueue.lowPriority[j].handled != 0) {
                                                                 // Copy from the internal queue
-                                                                memcpy(&tempMessageQueue.lowPriority[j], lowPriority, sizeof(struct TempMessageQueue));
+                                                                memcpy(&tempMessageQueue.lowPriority[j], lowPriority, sizeof(struct Message));
                                                                 // Remove from internal queue
                                                                 lowPriority->code = 0;
                                                                 foundASlot = 1;
                                                                 break;
+                                                        } else {
+                                                                printk("Can't insert at index %d code=%d handled=%d window=%llx\n", j, tempMessageQueue.lowPriority[j].code, tempMessageQueue.lowPriority[j].handled, tempMessageQueue.lowPriority[j].window);
                                                         }
                                                 }
-                                                printk("Inserted at index %d code=%d handled=%d argA=%llx\n", j, tempMessageQueue.lowPriority[j].code, tempMessageQueue.lowPriority[j].handled, tempMessageQueue.lowPriority[j].argA);
+                                                if (!foundASlot) { /* TODO: Do something if we can't find a place for it? (other priorities too) */ }
+                                                else { messageQueueRef->lowPriority[i].code = 0; }
+                                                printk("Inserted at index %d code=%d handled=%d argA=%llx foundASlot=%d\n", j, tempMessageQueue.lowPriority[j].code, tempMessageQueue.lowPriority[j].handled, tempMessageQueue.lowPriority[j].argA, foundASlot);
                                         }
                                         if (lowestPriority->code) {
                                                 // Go through the temp queue to find a spot
                                                 uint64_t foundASlot = 0;
-                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY; j++) {
-                                                        if (tempMessageQueue.lowestPriority[j].code == 0) {
+                                                for (j = 0; j < NUM_MESSAGES_PER_PRIORITY && foundASlot == 0; j++) {
+                                                        if (tempMessageQueue.lowestPriority[j].code == 0 || tempMessageQueue.lowestPriority[j].handled != 0) {
                                                                 // Copy from the internal queue
-                                                                memcpy(&tempMessageQueue.lowestPriority[j], lowestPriority, sizeof(struct TempMessageQueue));
+                                                                memcpy(&tempMessageQueue.lowestPriority[j], lowestPriority, sizeof(struct Message));
                                                                 // Remove from internal queue
                                                                 lowestPriority->code = 0;
                                                                 foundASlot = 1;
                                                                 break;
                                                         }
                                                 }
+                                                if (!foundASlot) { /* TODO: Do something if we can't find a place for it? (other priorities too) */ }
+                                                else { messageQueueRef->lowestPriority[i].code = 0; }
                                         }
                                 }
                                 // Write temp queue back to user memory
                                 res = copy_to_user((struct TempMessageQueue *)messageQueueRef->addr, &tempMessageQueue, sizeof(struct TempMessageQueue));
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                        printk("copy_to_user highPriority[%d] code=%d window=%d\n", i, tempMessageQueue.highPriority[i].code, tempMessageQueue.highPriority[i].window);
+                                }
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                        printk("copy_to_user mediumPriority[%d] code=%d window=%d\n", i, tempMessageQueue.mediumPriority[i].code, tempMessageQueue.mediumPriority[i].window);
+                                }
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                        printk("copy_to_user lowPriority[%d] code=%d window=%d\n", i, tempMessageQueue.lowPriority[i].code, tempMessageQueue.lowPriority[i].window);
+                                }
+                                for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
+                                        printk("copy_to_user lowestPriority[%d] code=%d window=%d\n", i, tempMessageQueue.lowestPriority[i].code, tempMessageQueue.lowestPriority[i].window);
+                                }
                                 // TODO: Eventually: Copy miscData also (once we have messages that use it)
                         }
                 }
