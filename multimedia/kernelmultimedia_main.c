@@ -15,12 +15,7 @@ struct ReturnValue {
         uint32_t pid;
 };
 struct ReturnValue *returnValues = 0;
-struct WindowRef {
-        struct WindowRef *next;
-        uint32_t pid;
-        uint64_t addr;
-};
-struct __attribute__((__packed__)) Message {
+struct Message {
     uint32_t code;
     uint64_t window;
     uint64_t argA;
@@ -28,7 +23,7 @@ struct __attribute__((__packed__)) Message {
     uint32_t handled;
     uint32_t miscDataLength;
     uint8_t * miscData;
-};
+} __packed;
 #define NUM_MESSAGES_PER_PRIORITY 16
 struct MessageQueueRef {
         struct MessageQueueRef *next;
@@ -55,6 +50,11 @@ struct TempMessageQueue {
     struct TempMessage lowestPriority[NUM_MESSAGES_PER_PRIORITY];
 } __packed;
 struct TempMessageQueue tempMessageQueue;
+struct WindowRef {
+        struct WindowRef *next;
+        uint32_t pid;
+        uint64_t addr;
+};
 static struct WindowRef *windowRefs = 0;
 static struct MessageQueueRef *messageQueueRefs = 0;
 extern struct fb_info *registered_fb[FB_MAX] __read_mostly; // TODO: __read_mostly? That's not true... is it?
@@ -136,6 +136,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                         newMessage = (struct Message *)kmalloc(sizeof(struct Message), GFP_KERNEL);
                         newMessage->code = KERNELMULTIMEDIA_MSG_WINDOW_INIT;
                         newMessage->window = argA;
+                        printk("SENDING KERNELMULTIMEDIA_MSG_WINDOW_INIT window=%llx", argA);
                         newMessage->handled = 0;
                         for (i = 0; i < NUM_MESSAGES_PER_PRIORITY; i++) {
                                 if (messageQueueRef->lowPriority[i].code == 0 || messageQueueRef->lowPriority[i].handled == 1) {
@@ -283,7 +284,7 @@ static ssize_t call_store(struct kobject *kobj, struct kobj_attribute *attr, con
                                                                 break;
                                                         }
                                                 }
-                                                printk("Inserted at index %d code=%d handled=%d\n", j, tempMessageQueue.lowPriority[j].code, tempMessageQueue.lowPriority[j].handled);
+                                                printk("Inserted at index %d code=%d handled=%d argA=%llx\n", j, tempMessageQueue.lowPriority[j].code, tempMessageQueue.lowPriority[j].handled, tempMessageQueue.lowPriority[j].argA);
                                         }
                                         if (lowestPriority->code) {
                                                 // Go through the temp queue to find a spot
