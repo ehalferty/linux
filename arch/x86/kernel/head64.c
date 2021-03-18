@@ -132,9 +132,7 @@ static bool __head check_la57_support(unsigned long physaddr)
  * boot-time crashes. To work around this problem, every global pointer must
  * be adjusted using fixup_pointer().
  */
-unsigned long __head __startup_64(unsigned long physaddr,
-				  struct boot_params *bp)
-{
+unsigned long __head __startup_64(unsigned long physaddr, struct boot_params *bp) {
 	unsigned long vaddr, vaddr_end;
 	unsigned long load_delta, *p;
 	unsigned long pgtable_flags;
@@ -149,19 +147,12 @@ unsigned long __head __startup_64(unsigned long physaddr,
 
 	la57 = check_la57_support(physaddr);
 
-	/* Is the address too large? */
-	if (physaddr >> MAX_PHYSMEM_BITS)
-		for (;;);
+	if (physaddr >> MAX_PHYSMEM_BITS) { while(1) {} } /* Is the address too large? */
 
-	/*
-	 * Compute the delta between the address I am compiled to run at
-	 * and the address I am actually running at.
-	 */
+	/* Compute the delta between the address I am compiled to run at and the address I am actually running at. */
 	load_delta = physaddr - (unsigned long)(_text - __START_KERNEL_map);
 
-	/* Is the address not 2M aligned? */
-	if (load_delta & ~PMD_PAGE_MASK)
-		for (;;);
+	if (load_delta & ~PMD_PAGE_MASK) { while (1) {} } /* Is the address not 2M aligned? */
 
 	/* Activate Secure Memory Encryption (SME) if supported and enabled */
 	sme_enable(bp);
@@ -170,7 +161,6 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	load_delta += sme_get_me_mask();
 
 	/* Fixup the physical addresses in the page table */
-
 	pgd = fixup_pointer(&early_top_pgt, physaddr);
 	p = pgd + pgd_index(__START_KERNEL_map);
 	if (la57)
@@ -592,15 +582,11 @@ void early_setup_idt(void)
 	native_load_idt(&bringup_idt_descr);
 }
 
-/*
- * Setup boot CPU state needed before kernel switches to virtual addresses.
- */
-void __head startup_64_setup_env(unsigned long physbase)
-{
+/* Setup boot CPU state needed before kernel switches to virtual addresses. */
+void __head startup_64_setup_env(unsigned long physbase) {
 	/* Load GDT */
 	startup_gdt_descr.address = (unsigned long)fixup_pointer(startup_gdt, physbase);
 	native_load_gdt(&startup_gdt_descr);
-
 	/* New GDT is live - reload data segment registers */
 	asm volatile("movl %%eax, %%ds\n"
 		     "movl %%eax, %%ss\n"

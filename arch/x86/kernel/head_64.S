@@ -20,28 +20,17 @@
 
 	.globl startup_64
 startup_64:
-	UNWIND_HINT sp_reg=ORC_REG_UNDEFINED type=UNWIND_HINT_TYPE_CALL end=1
-	/*UNWIND_HINT_EMPTY*/
-	/*
-	 * At this point the CPU runs in 64bit mode CS.L = 1 CS.D = 0,
-	 * and someone has loaded an identity mapped page table
-	 * for us.  These identity mapped page tables map all of the
-	 * kernel pages and possibly all of memory.
-	 *
-	 * %rsi holds a physical pointer to real_mode_data.
-	 *
-	 * We come here either directly from a 64bit bootloader, or from
-	 * arch/x86/boot/compressed/head_64.S.
-	 *
-	 * We only come here initially at boot nothing else comes here.
-	 *
-	 * Since we may be loaded at an address different from what we were
-	 * compiled to run at we first fixup the physical addresses in our page
-	 * tables and then reload them.
-	 */
+	/* TODO: Probably remove these and also objtool */
+	UNWIND_HINT_EMPTY
+	/* At this point the CPU runs in 64bit mode CS.L = 1 CS.D = 0, and someone has loaded an identity mapped page table for us.
+	These identity mapped page tables map all of the kernel pages and possibly all of memory.
+	%rsi holds a physical pointer to real_mode_data.
+	We come here either directly from a 64bit bootloader, or from arch/x86/boot/compressed/head_64.S.
+	We only come here initially at boot nothing else comes here.
+	Since we may be loaded at an address different from what we were compiled to run at we first fixup the physical addresses in our page tables and then reload them. */
 
 	/* Set up the stack for verify_cpu(), similar to initial_stack below */
-	leaq	(__end_init_task - SIZEOF_PTREGS)(%rip), %rsp
+	leaq	(__end_init_task - (21 * 8))(%rip), %rsp
 
 	leaq	_text(%rip), %rdi
 	pushq	%rsi
@@ -60,12 +49,8 @@ startup_64:
 	/* Sanitize CPU configuration */
 	call verify_cpu
 
-	/*
-	 * Perform pagetable fixups. Additionally, if SME is active, encrypt
-	 * the kernel and retrieve the modifier (SME encryption mask if SME
-	 * is active) to be added to the initial pgdir entry that will be
-	 * programmed into CR3.
-	 */
+	/* Perform pagetable fixups. Additionally, if SME is active, encrypt the kernel and retrieve the modifier (SME encryption mask if SME
+	 * is active) to be added to the initial pgdir entry that will be programmed into CR3. */
 	leaq	_text(%rip), %rdi
 	pushq	%rsi
 	call	__startup_64
@@ -74,7 +59,11 @@ startup_64:
 	/* Form the CR3 value being sure to include the CR3 modifier */
 	addq	$(early_top_pgt - __START_KERNEL_map), %rax
 	jmp 1f
-SYM_CODE_END(startup_64)
+
+	.type startup_64 0
+	.size startup_64, .-startup_64
+
+
 
 SYM_CODE_START(secondary_startup_64)
 	UNWIND_HINT_EMPTY
