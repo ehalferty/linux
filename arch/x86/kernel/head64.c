@@ -459,6 +459,9 @@ static void __init copy_bootdata(char *real_mode_data)
 
 asmlinkage __visible void __init x86_64_start_kernel(char * real_mode_data)
 {
+	int i = 0;
+	//PHAZ - Definitely hits here
+	//while (i == 0) {}
 	/*
 	 * Build-time sanity checks on the kernel image and module
 	 * area mappings. (these are purely build-time and produce no code)
@@ -508,6 +511,9 @@ asmlinkage __visible void __init x86_64_start_kernel(char * real_mode_data)
 
 void __init x86_64_start_reservations(char *real_mode_data)
 {
+	int i = 0;
+	// PHAZ - Definitely hits here
+	// while (i == 0) {}
 	/* version is always not zero if it is copied */
 	if (!boot_params.hdr.version)
 		copy_bootdata(__va(real_mode_data));

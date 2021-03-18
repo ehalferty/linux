@@ -1,15 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
- *  linux/arch/x86/kernel/head_64.S -- start in 32bit and switch to 64bit
- *
- *  Copyright (C) 2000 Andrea Arcangeli <andrea@suse.de> SuSE
- *  Copyright (C) 2000 Pavel Machek <pavel@suse.cz>
- *  Copyright (C) 2000 Karsten Keil <kkeil@suse.de>
- *  Copyright (C) 2001,2002 Andi Kleen <ak@suse.de>
- *  Copyright (C) 2005 Eric Biederman <ebiederm@xmission.com>
- */
-
-
 #include <linux/linkage.h>
 #include <linux/threads.h>
 #include <linux/init.h>
@@ -26,23 +14,14 @@
 #include <asm/nospec-branch.h>
 #include <asm/fixmap.h>
 
-/*
- * We are not able to switch in one step to the final KERNEL ADDRESS SPACE
- * because we need identity-mapped pages.
- */
-#define l4_index(x)	(((x) >> 39) & 511)
-#define pud_index(x)	(((x) >> PUD_SHIFT) & (PTRS_PER_PUD-1))
-
-L4_PAGE_OFFSET = l4_index(__PAGE_OFFSET_BASE_L4)
-L4_START_KERNEL = l4_index(__START_KERNEL_map)
-
-L3_START_KERNEL = pud_index(__START_KERNEL_map)
-
-	.text
-	__HEAD
+.text
+	.section	".head.text","ax"
 	.code64
-SYM_CODE_START_NOALIGN(startup_64)
-	UNWIND_HINT_EMPTY
+
+	.globl startup_64
+startup_64:
+	UNWIND_HINT sp_reg=ORC_REG_UNDEFINED type=UNWIND_HINT_TYPE_CALL end=1
+	/*UNWIND_HINT_EMPTY*/
 	/*
 	 * At this point the CPU runs in 64bit mode CS.L = 1 CS.D = 0,
 	 * and someone has loaded an identity mapped page table
@@ -336,7 +315,15 @@ SYM_CODE_END(vc_boot_ghcb)
 	/* Both SMP bootup and ACPI suspend change these variables */
 	__REFDATA
 	.balign	8
-SYM_DATA(initial_code,	.quad x86_64_start_kernel)
+
+/* PHAZ */
+.globl initial_code
+initial_code:
+	.quad x86_64_start_kernel
+.type initial_code 1
+.size initial_code, .-initial_code
+
+/*SYM_DATA(initial_code,	.quad x86_64_start_kernel)*/
 SYM_DATA(initial_gs,	.quad INIT_PER_CPU_VAR(fixed_percpu_data))
 #ifdef CONFIG_AMD_MEM_ENCRYPT
 SYM_DATA(initial_vc_handler,	.quad handle_vc_boot_ghcb)
@@ -485,9 +472,9 @@ SYM_DATA(early_recursion_flag, .long 0)
 #if defined(CONFIG_XEN_PV) || defined(CONFIG_PVH)
 SYM_DATA_START_PTI_ALIGNED(init_top_pgt)
 	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
-	.org    init_top_pgt + L4_PAGE_OFFSET*8, 0
+	.org    init_top_pgt + (((0xffff888000000000 >> 39) & 511) * 8), 0
 	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
-	.org    init_top_pgt + L4_START_KERNEL*8, 0
+	.org    init_top_pgt + ((0xffffffff80000000 >> 39) & 511) * 8, 0
 	/* (2^48-(2*1024*1024*1024))/(2^39) = 511 */
 	.quad   level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC
 	.fill	PTI_USER_PGD_FILL,8,0
@@ -523,7 +510,7 @@ SYM_DATA_END(level4_kernel_pgt)
 #endif
 
 SYM_DATA_START_PAGE_ALIGNED(level3_kernel_pgt)
-	.fill	L3_START_KERNEL,8,0
+	.fill	((0xffffffff80000000 >> 30) & 511),8,0
 	/* (2^48-(2*1024*1024*1024)-((2^39)*511))/(2^30) = 510 */
 	.quad	level2_kernel_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
 	.quad	level2_fixmap_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC
@@ -584,4 +571,15 @@ SYM_DATA_START_PAGE_ALIGNED(empty_zero_page)
 	.skip PAGE_SIZE
 SYM_DATA_END(empty_zero_page)
 EXPORT_SYMBOL(empty_zero_page)
+
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ *  linux/arch/x86/kernel/head_64.S -- start in 32bit and switch to 64bit
+ *
+ *  Copyright (C) 2000 Andrea Arcangeli <andrea@suse.de> SuSE
+ *  Copyright (C) 2000 Pavel Machek <pavel@suse.cz>
+ *  Copyright (C) 2000 Karsten Keil <kkeil@suse.de>
+ *  Copyright (C) 2001,2002 Andi Kleen <ak@suse.de>
+ *  Copyright (C) 2005 Eric Biederman <ebiederm@xmission.com>
+ */
 
