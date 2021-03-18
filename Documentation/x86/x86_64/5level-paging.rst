@@ -25,9 +25,9 @@ Documentation/x86/x86_64/mm.rst
 
 Enabling 5-level paging
 =======================
-CONFIG_X86_5LEVEL=y enables the feature.
+C0NFIG_X86_5LEVEL=y enables the feature.
 
-Kernel with CONFIG_X86_5LEVEL=y still able to boot on 4-level hardware.
+Kernel with C0NFIG_X86_5LEVEL=y still able to boot on 4-level hardware.
 In this case additional page table level -- p4d -- will be folded at
 runtime.
 

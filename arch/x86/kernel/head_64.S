@@ -18,6 +18,7 @@
 	.section	".head.text","ax"
 	.code64
 
+
 	.globl startup_64
 startup_64:
 	/* TODO: Probably remove these and also objtool */
@@ -48,6 +49,7 @@ startup_64:
 
 	/* Sanitize CPU configuration */
 	call verify_cpu
+	movl $1,%eax
 
 	/* Perform pagetable fixups. Additionally, if SME is active, encrypt the kernel and retrieve the modifier (SME encryption mask if SME
 	 * is active) to be added to the initial pgdir entry that will be programmed into CR3. */
@@ -64,42 +66,25 @@ startup_64:
 	.size startup_64, .-startup_64
 
 
-
-SYM_CODE_START(secondary_startup_64)
+	.globl secondary_startup_64
+	__ALIGN
+secondary_startup_64:
 	UNWIND_HINT_EMPTY
-	/*
-	 * At this point the CPU runs in 64bit mode CS.L = 1 CS.D = 0,
-	 * and someone has loaded a mapped page table.
-	 *
-	 * %rsi holds a physical pointer to real_mode_data.
-	 *
-	 * We come here either from startup_64 (using physical addresses)
-	 * or from trampoline.S (using virtual addresses).
-	 *
-	 * Using virtual addresses from trampoline.S removes the need
-	 * to have any identity mapped pages in the kernel page table
-	 * after the boot processor executes this code.
-	 */
+	/* At this point the CPU runs in 64bit mode CS.L = 1 CS.D = 0, and someone has loaded a mapped page table.
+	  %rsi holds a physical pointer to real_mode_data.
+	  We come here either from startup_64 (using physical addresses) or from trampoline.S (using virtual addresses).
+	  Using virtual addresses from trampoline.S removes the need to have any identity mapped pages in the kernel page table after the boot processor executes this code. */
 
 	/* Sanitize CPU configuration */
 	call verify_cpu
+	movl $1,%eax
 
-	/*
-	 * The secondary_startup_64_no_verify entry point is only used by
-	 * SEV-ES guests. In those guests the call to verify_cpu() would cause
-	 * #VC exceptions which can not be handled at this stage of secondary
-	 * CPU bringup.
-	 *
-	 * All non SEV-ES systems, especially Intel systems, need to execute
-	 * verify_cpu() above to make sure NX is enabled.
-	 */
+	/* The secondary_startup_64_no_verify entry point is only used by SEV-ES guests. In those guests the call to verify_cpu() would cause #VC exceptions which can not be handled at this stage of secondary
+	 * CPU bringup. All non SEV-ES systems, especially Intel systems, need to execute verify_cpu() above to make sure NX is enabled. */
 SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	UNWIND_HINT_EMPTY
 
-	/*
-	 * Retrieve the modifier (SME encryption mask if SME is active) to be
-	 * added to the initial pgdir entry that will be programmed into CR3.
-	 */
+	/* Retrieve the modifier (SME encryption mask if SME is active) to be added to the initial pgdir entry that will be programmed into CR3. */
 	pushq	%rsi
 	call	__startup_secondary_64
 	popq	%rsi
@@ -110,12 +95,6 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 
 	/* Enable PAE mode, PGE and LA57 */
 	movl	$(X86_CR4_PAE | X86_CR4_PGE), %ecx
-#ifdef CONFIG_X86_5LEVEL
-	testl	$1, __pgtable_l5_enabled(%rip)
-	jz	1f
-	orl	$X86_CR4_LA57, %ecx
-1:
-#endif
 	movq	%rcx, %cr4
 
 	/* Setup early boot stage 4-/5-level pagetables. */
@@ -489,13 +468,6 @@ SYM_DATA_START_PTI_ALIGNED(init_top_pgt)
 	.fill	512,8,0
 	.fill	PTI_USER_PGD_FILL,8,0
 SYM_DATA_END(init_top_pgt)
-#endif
-
-#ifdef CONFIG_X86_5LEVEL
-SYM_DATA_START_PAGE_ALIGNED(level4_kernel_pgt)
-	.fill	511,8,0
-	.quad	level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC
-SYM_DATA_END(level4_kernel_pgt)
 #endif
 
 SYM_DATA_START_PAGE_ALIGNED(level3_kernel_pgt)

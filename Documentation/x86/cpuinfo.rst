@@ -125,7 +125,7 @@ For example, when an old kernel is running on new hardware.
 c: The kernel disabled support for it at compile-time.
 ------------------------------------------------------
 For example, if 5-level-paging is not enabled when building (i.e.,
-CONFIG_X86_5LEVEL is not selected) the flag "la57" will not show up [#f1]_.
+C0NFIG_X86_5LEVEL is not selected) the flag "la57" will not show up [#f1]_.
 Even though the feature will still be detected via CPUID, the kernel disables
 it by clearing via setup_clear_cpu_cap(X86_FEATURE_LA57).
 

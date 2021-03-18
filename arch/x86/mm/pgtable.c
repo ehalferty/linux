@@ -660,27 +660,6 @@ void native_set_fixmap(unsigned /* enum fixed_addresses */ idx,
 }
 
 #ifdef CONFIG_HAVE_ARCH_HUGE_VMAP
-#ifdef CONFIG_X86_5LEVEL
-/**
- * p4d_set_huge - setup kernel P4D mapping
- *
- * No 512GB pages yet -- always return 0
- */
-int p4d_set_huge(p4d_t *p4d, phys_addr_t addr, pgprot_t prot)
-{
-	return 0;
-}
-
-/**
- * p4d_clear_huge - clear kernel P4D mapping when it is set
- *
- * No 512GB pages yet -- always return 0
- */
-int p4d_clear_huge(p4d_t *p4d)
-{
-	return 0;
-}
-#endif
 
 /**
  * pud_set_huge - setup kernel PUD mapping
